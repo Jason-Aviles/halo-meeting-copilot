@@ -6,7 +6,9 @@
 
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
-use sonora::config::{EchoCanceller as AecConfig, HighPassFilter, NoiseSuppression};
+use sonora::config::{
+    AdaptiveDigital, EchoCanceller as AecConfig, GainController2, HighPassFilter, NoiseSuppression,
+};
 use sonora::{AudioProcessing, Config, StreamConfig};
 
 /// Both streams are 16 kHz mono PCM16, matching what the window sends.
@@ -35,6 +37,13 @@ impl EchoCanceller {
             echo_canceller: Some(AecConfig::default()),
             noise_suppression: Some(NoiseSuppression::default()),
             high_pass_filter: Some(HighPassFilter::default()),
+            // Level the mic *after* echo removal. The browser's own gain control
+            // runs before it and changes the echo path the canceller is tracking,
+            // so the window turns that off whenever this add-on is in use.
+            gain_controller2: Some(GainController2 {
+                adaptive_digital: Some(AdaptiveDigital::default()),
+                ..Default::default()
+            }),
             ..Default::default()
         };
         let stream = StreamConfig::new(SAMPLE_RATE, 1);

@@ -14,7 +14,8 @@ export class AudioCapture {
   /**
    * @param nativeEchoCancellation when true, the main process removes speaker
    *   echo using the system audio as reference, so the browser's own echo
-   *   canceller (which can't see that reference) is turned off.
+   *   canceller (which can't see that reference) is turned off, along with its
+   *   noise suppression and gain control, which the add-on applies after echo removal.
    */
   async start(
     onChunk: (speaker: Speaker, pcm16: ArrayBuffer) => void,
@@ -28,12 +29,18 @@ export class AudioCapture {
         audio: {
           echoCancellation: !nativeEchoCancellation,
           noiseSuppression: !nativeEchoCancellation,
-          autoGainControl: true,
+          autoGainControl: !nativeEchoCancellation,
         },
       });
       this.streams.push(mic);
 
-      const display = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+      // Keep system audio unprocessed: Chrome otherwise applies echo cancellation,
+      // noise suppression and gain control to it, which distorts both the "Them"
+      // transcript and the reference signal the echo canceller compares against.
+      const display = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+      });
       this.streams.push(display);
       // Video is required by the API but unused; keep the track alive (stopping it
       // can end the loopback audio too) and just disable it.
