@@ -1,6 +1,6 @@
 import WebSocket from "ws";
 import type { SpeechmaticsRegion } from "../../shared/types";
-import { MAX_PENDING_CHUNKS, SAMPLE_RATE, type SttCallbacks, type SttStream } from "./types";
+import { MAX_PENDING_CHUNKS, SAMPLE_RATE, whenClosed, type SttCallbacks, type SttStream } from "./types";
 
 // https://docs.speechmatics.com/rt-api-ref
 export function openSpeechmatics(
@@ -81,12 +81,15 @@ export function openSpeechmatics(
     },
     close() {
       if (started && ws.readyState === WebSocket.OPEN) {
-        // Speechmatics flushes remaining finals, then replies with EndOfTranscript.
+        // Speechmatics flushes remaining finals, then replies with EndOfTranscript,
+        // on which the message handler above closes the socket.
         ws.send(JSON.stringify({ message: "EndOfStream", last_seq_no: chunksSent }));
-        setTimeout(() => ws.close(), 2_000);
-      } else {
+      } else if (ws.readyState === WebSocket.OPEN) {
+        ws.close();
+      } else if (ws.readyState === WebSocket.CONNECTING) {
         ws.terminate();
       }
+      return whenClosed(ws, 2_000);
     },
   };
 }

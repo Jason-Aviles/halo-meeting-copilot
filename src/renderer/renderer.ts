@@ -154,6 +154,10 @@ async function startListening(): Promise<void> {
     state.echoCancellation = session.echoCancellation;
     await audio.start((speaker, pcm16) => api.sendAudio(speaker, pcm16), session.echoCancellation);
     state.listening = true;
+    // Each call gets its own transcript (and its own saved history entry).
+    state.lines = [];
+    state.interim = { you: "", them: "" };
+    renderTranscript();
     state.callStartedAt = Date.now();
     state.savedCallId = null;
     state.lastSummary = "";
@@ -171,8 +175,17 @@ async function startListening(): Promise<void> {
 
 async function stopListening(): Promise<void> {
   audio.stop();
+  el.btnSession.disabled = true;
+  setStatus("Finishing…");
+  // Resolves after both services have sent their final results.
   await api.stopSession().catch(() => {});
+  el.btnSession.disabled = false;
   state.listening = false;
+  // Keep any words still only in a partial result rather than dropping them.
+  for (const speaker of ["them", "you"] as const) {
+    const text = state.interim[speaker].trim();
+    if (text) onTranscript({ speaker, text, isFinal: true });
+  }
   state.interim = { you: "", them: "" };
   el.btnSession.textContent = "Start listening";
   setStatus("Idle");

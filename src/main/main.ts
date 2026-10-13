@@ -66,7 +66,7 @@ function createWindow(): void {
   win.webContents.on("will-navigate", (event) => event.preventDefault());
   win.on("closed", () => {
     win = undefined;
-    stopSession();
+    void stopSession();
   });
 }
 
@@ -90,7 +90,7 @@ function send(channel: string, payload: unknown): void {
 }
 
 function startSession(): SessionInfo {
-  stopSession();
+  void stopSession();
   const s = getSettings();
   const key = getSecret(s.sttProvider === "deepgram" ? "deepgramKey" : "speechmaticsKey");
   if (!key) {
@@ -142,10 +142,13 @@ function onAudio(speaker: Speaker, chunk: Int16Array): void {
   sttStreams[speaker]?.send(Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength));
 }
 
-function stopSession(): void {
+/** Stops capture processing; resolves once both services have sent their final results. */
+function stopSession(): Promise<void> {
+  const closing: Promise<void>[] = [];
   for (const speaker of ["you", "them"] as const) {
-    sttStreams[speaker]?.close();
+    const stream = sttStreams[speaker];
     delete sttStreams[speaker];
+    if (stream) closing.push(stream.close());
   }
   echoCanceller = undefined;
   clearInterval(meetingAppTimer);
@@ -154,6 +157,7 @@ function stopSession(): void {
     meetingApp = null;
     send("meeting:app", null);
   }
+  return Promise.all(closing).then(() => undefined);
 }
 
 function ask(request: AnswerRequest): number {
@@ -265,7 +269,7 @@ app.whenReady().then(() => {
 
 app.on("will-quit", () => {
   globalShortcut.unregisterAll();
-  stopSession();
+  void stopSession();
   answerAbort?.abort();
 });
 

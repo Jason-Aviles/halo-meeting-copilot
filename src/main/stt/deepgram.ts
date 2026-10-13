@@ -1,5 +1,5 @@
 import WebSocket from "ws";
-import { MAX_PENDING_CHUNKS, SAMPLE_RATE, type SttCallbacks, type SttStream } from "./types";
+import { MAX_PENDING_CHUNKS, SAMPLE_RATE, whenClosed, type SttCallbacks, type SttStream } from "./types";
 
 // https://developers.deepgram.com/docs/live-streaming-audio
 export function openDeepgram(apiKey: string, language: string, cb: SttCallbacks): SttStream {
@@ -62,12 +62,12 @@ export function openDeepgram(apiKey: string, language: string, cb: SttCallbacks)
     },
     close() {
       if (ws.readyState === WebSocket.OPEN) {
-        // Ask Deepgram to flush final results, then close if it doesn't.
+        // Deepgram sends its remaining final results, then closes the socket.
         ws.send(JSON.stringify({ type: "CloseStream" }));
-        setTimeout(() => ws.close(), 1_500);
-      } else {
+      } else if (ws.readyState === WebSocket.CONNECTING) {
         ws.terminate();
       }
+      return whenClosed(ws, 1_500);
     },
   };
 }
