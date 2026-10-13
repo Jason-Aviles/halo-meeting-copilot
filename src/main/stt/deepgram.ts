@@ -21,6 +21,7 @@ export function openDeepgram(apiKey: string, language: string, cb: SttCallbacks)
   let keepAlive: NodeJS.Timeout | undefined;
 
   ws.on("open", () => {
+    cb.onOpen?.();
     for (const chunk of pending) ws.send(chunk);
     pending.length = 0;
     // Deepgram closes idle sockets after ~10 s without audio or a KeepAlive.

@@ -49,6 +49,7 @@ export function openSpeechmatics(
     switch (msg.message) {
       case "RecognitionStarted":
         started = true;
+        cb.onOpen?.();
         for (const chunk of pending) sendAudio(chunk);
         pending.length = 0;
         break;

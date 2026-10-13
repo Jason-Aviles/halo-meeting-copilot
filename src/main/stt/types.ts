@@ -4,6 +4,8 @@ import WebSocket from "ws";
 export const SAMPLE_RATE = 16_000;
 
 export interface SttCallbacks {
+  /** The service is ready to receive audio. */
+  onOpen?(): void;
   /** Interim results replace each other until a final result commits the text. */
   onTranscript(text: string, isFinal: boolean): void;
   onError(message: string): void;

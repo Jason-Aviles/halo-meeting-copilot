@@ -26,6 +26,7 @@ import { detectMeetingApp, loadNative, type NativeEchoCanceller } from "./native
 import { getSecret, getSettings, toPublic, updateSettings } from "./settings";
 import { openDeepgram } from "./stt/deepgram";
 import { openSpeechmatics } from "./stt/speechmatics";
+import { withReconnect } from "./stt/reconnect";
 import type { SttStream } from "./stt/types";
 
 const RENDERER_HTML = path.join(__dirname, "renderer", "index.html");
@@ -98,20 +99,26 @@ function startSession(): SessionInfo {
     throw new Error(`Add your ${name} API key in Settings first.`);
   }
 
+  const service = s.sttProvider === "deepgram" ? "Deepgram" : "Speechmatics";
   for (const speaker of ["you", "them"] as const) {
-    const callbacks = {
-      onTranscript: (text: string, isFinal: boolean) =>
-        send("stt:transcript", { speaker, text, isFinal } satisfies TranscriptEvent),
-      onError: (message: string) => send("stt:error", message),
-      onClose: () => {
-        if (sttStreams[speaker] === stream) delete sttStreams[speaker];
+    const side = speaker === "you" ? "your mic" : "their audio";
+    sttStreams[speaker] = withReconnect(
+      (callbacks) =>
+        s.sttProvider === "deepgram"
+          ? openDeepgram(key, s.language, callbacks)
+          : openSpeechmatics(key, s.speechmaticsRegion, s.language, callbacks),
+      {
+        onTranscript: (text, isFinal) =>
+          send("stt:transcript", { speaker, text, isFinal } satisfies TranscriptEvent),
+        onError: (message) => send("stt:error", message),
+        onReconnecting: (delayMs) =>
+          send("stt:error", `${service} dropped the connection for ${side}. Reconnecting in ${Math.round(delayMs / 1000)} s…`),
+        // An empty message clears the warning in the window.
+        onRecovered: () => send("stt:error", ""),
+        onGiveUp: () =>
+          send("stt:error", `${service} keeps dropping the connection for ${side}. Check your key and network, then start listening again.`),
       },
-    };
-    const stream =
-      s.sttProvider === "deepgram"
-        ? openDeepgram(key, s.language, callbacks)
-        : openSpeechmatics(key, s.speechmaticsRegion, s.language, callbacks);
-    sttStreams[speaker] = stream;
+    );
   }
 
   const native = loadNative();
