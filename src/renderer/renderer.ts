@@ -10,6 +10,7 @@ import type {
 } from "../shared/types";
 import { AudioCapture } from "./audio";
 import { initHistory, showView, type View } from "./history";
+import { TranscriptView } from "./transcript-view";
 
 declare global {
   interface Window {
@@ -100,50 +101,39 @@ function errorText(err: unknown): string {
 
 // ---------- transcript ----------
 
+const transcriptView = new TranscriptView(el.transcript, el.transcriptEmpty);
+
+/** Full redraw from state; only used when a call starts or the transcript is cleared. */
 function renderTranscript(): void {
-  const atBottom =
-    el.transcript.scrollHeight - el.transcript.scrollTop - el.transcript.clientHeight < 40;
-
-  el.transcript.replaceChildren();
-  const rows: Array<TranscriptLine & { interim?: boolean }> = [...state.lines];
+  transcriptView.reset(state.lines);
   for (const speaker of ["them", "you"] as const) {
-    if (state.interim[speaker]) rows.push({ speaker, text: state.interim[speaker], interim: true });
+    transcriptView.setPartial(speaker, state.interim[speaker]);
   }
-
-  if (rows.length === 0) {
-    el.transcript.append(el.transcriptEmpty);
-    return;
-  }
-
-  for (const row of rows) {
-    const p = document.createElement("p");
-    p.className = row.speaker + (row.interim ? " interim" : "");
-    const who = document.createElement("span");
-    who.className = "who";
-    who.textContent = row.speaker === "them" ? "Them" : "You";
-    p.append(who, document.createTextNode(row.text));
-    el.transcript.append(p);
-  }
-
-  if (atBottom) el.transcript.scrollTop = el.transcript.scrollHeight;
 }
 
 function onTranscript(event: TranscriptEvent): void {
   if (!event.isFinal) {
     state.interim[event.speaker] = event.text;
+    transcriptView.setPartial(event.speaker, event.text);
   } else {
     state.interim[event.speaker] = "";
+    transcriptView.setPartial(event.speaker, "");
     const last = state.lines[state.lines.length - 1];
     // Merge consecutive finals from the same speaker into one line.
-    if (last && last.speaker === event.speaker) last.text += " " + event.text;
-    else state.lines.push({ speaker: event.speaker, text: event.text });
+    if (last && last.speaker === event.speaker) {
+      last.text += " " + event.text;
+      transcriptView.updateLast(last.text);
+    } else {
+      const line = { speaker: event.speaker, text: event.text };
+      state.lines.push(line);
+      transcriptView.append(line);
+    }
 
     if (event.speaker === "them" && state.settings?.autoAnswer && /\?\s*$/.test(event.text)) {
       window.clearTimeout(state.autoTimer);
       state.autoTimer = window.setTimeout(() => void ask(), AUTO_ANSWER_DELAY_MS);
     }
   }
-  renderTranscript();
 }
 
 // ---------- session ----------
