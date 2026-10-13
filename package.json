@@ -5,6 +5,7 @@
   "description": "Live meeting copilot: transcribes both sides of a call and suggests answers with Claude.",
   "main": "dist/main.js",
   "private": true,
+  "license": "MIT",
   "scripts": {
     "build": "node build.mjs",
     "build:native": "napi build --cwd native --platform --release --no-js --dts index.d.ts --output-dir out",

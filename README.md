@@ -51,3 +51,7 @@ native/          Rust add-on (napi-rs): echo canceller and mic-session listing
 The native add-on uses [sonora](https://crates.io/crates/sonora) (BSD-3-Clause), a Rust port of WebRTC audio processing. Its license is in `native/THIRD_PARTY_LICENSES`.
 
 `npm run typecheck` runs TypeScript; `npm run build` bundles into `dist/` with esbuild.
+
+## License
+
+MIT. See `LICENSE`.
