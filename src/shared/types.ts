@@ -6,10 +6,35 @@ export type Speaker = "you" | "them";
 export const SPEECHMATICS_REGIONS = ["eu2", "us2"] as const;
 export type SpeechmaticsRegion = (typeof SPEECHMATICS_REGIONS)[number];
 
-export const CLAUDE_MODELS = ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"] as const;
+export const CLAUDE_MODELS = [
+  "claude-opus-5-5",
+  "claude-sonnet-5-5",
+  "claude-haiku-5-5",
+  // Older models, all still active on the Claude API.
+  "claude-opus-5",
+  "claude-sonnet-5",
+  "claude-opus-4-8",
+  "claude-opus-4-7",
+  "claude-opus-4-6",
+  "claude-sonnet-4-6",
+  "claude-opus-4-5",
+  "claude-sonnet-4-5",
+  "claude-haiku-4-5",
+] as const;
 export type ClaudeModel = (typeof CLAUDE_MODELS)[number];
 
-export const OPENAI_MODELS = ["gpt-5.5", "gpt-5.4-mini"] as const;
+export const OPENAI_MODELS = [
+  "gpt-5.5",
+  "gpt-5.4-mini",
+  // Older models.
+  "gpt-5.4",
+  "gpt-5.2",
+  "gpt-5.1",
+  "gpt-5",
+  "gpt-5-mini",
+  "gpt-4.1",
+  "gpt-4o",
+] as const;
 export type OpenAIModel = (typeof OPENAI_MODELS)[number];
 
 export type AiProvider = "claude" | "openai";

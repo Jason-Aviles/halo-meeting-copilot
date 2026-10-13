@@ -22,7 +22,8 @@ export async function streamOpenAI(opts: {
       model: opts.model,
       instructions,
       input: opts.prompt.userMessage,
-      reasoning: { effort: opts.prompt.effort },
+      // GPT-4.1 and GPT-4o aren't reasoning models and reject this setting.
+      ...(opts.model.startsWith("gpt-5") ? { reasoning: { effort: opts.prompt.effort } } : {}),
       stream: true,
     },
     { signal: opts.signal },
