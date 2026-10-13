@@ -2,7 +2,8 @@
   "name": "halo",
   "productName": "Halo",
   "version": "0.1.0",
-  "description": "Live meeting copilot: transcribes both sides of a call and suggests answers with Claude.",
+  "description": "Live meeting copilot: transcribes both sides of a call and suggests answers with Claude or ChatGPT.",
+  "author": "Jason Aviles",
   "main": "dist/main.js",
   "private": true,
   "license": "MIT",
@@ -10,19 +11,44 @@
     "build": "node build.mjs",
     "build:native": "napi build --cwd native --platform --release --no-js --dts index.d.ts --output-dir out",
     "typecheck": "tsc --noEmit",
-    "start": "node build.mjs && electron ."
+    "start": "node build.mjs && electron .",
+    "dist": "node build.mjs && electron-builder --win nsis --x64"
   },
-  "dependencies": {
-    "@anthropic-ai/sdk": "^0.133.0",
-    "openai": "^7.32.0",
-    "ws": "^8.22.0"
+  "build": {
+    "appId": "com.jasonaviles.halo",
+    "productName": "Halo",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "!dist/**/*.map",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "dist/*.node"
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "Halo-Setup-${version}.exe",
+      "shortcutName": "Halo"
+    }
   },
   "devDependencies": {
+    "@anthropic-ai/sdk": "^0.133.0",
     "@napi-rs/cli": "^3.10.8",
     "@types/node": "^26.6.5",
     "@types/ws": "^8.18.2",
     "electron": "^44.7.0",
+    "electron-builder": "^26.15.3",
     "esbuild": "^0.28.2",
-    "typescript": "^7.0.2"
+    "openai": "^7.32.0",
+    "typescript": "^7.0.2",
+    "ws": "^8.22.0"
   }
 }

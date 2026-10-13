@@ -12,7 +12,19 @@ A live meeting copilot for Windows. It transcribes both sides of a call and sugg
 
 Everything runs locally with your own API keys. Keys are encrypted with Windows secure storage (DPAPI) and only the main process can read them.
 
-## Run
+## Install
+
+Download `Halo-Setup-<version>.exe` and run it. Halo installs for your user only (no admin needed), and you can pick the folder. The installer isn't code-signed yet, so Windows SmartScreen may warn: choose **More info**, then **Run anyway**.
+
+## Build the installer
+
+```powershell
+npm install
+npm run build:native   # the echo-cancellation add-on; needs Rust and the VS C++ build tools
+npm run dist           # writes release\Halo-Setup-<version>.exe
+```
+
+## Run from source
 
 ```powershell
 npm install
