@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { ParacatApi } from "../shared/types";
+import type { HaloApi } from "../shared/types";
 
-const api: ParacatApi = {
+const api: HaloApi = {
   getSettings: () => ipcRenderer.invoke("settings:get"),
   updateSettings: (update) => ipcRenderer.invoke("settings:update", update),
   startSession: () => ipcRenderer.invoke("session:start"),
@@ -24,4 +24,4 @@ const api: ParacatApi = {
   deleteCall: (id) => ipcRenderer.invoke("history:delete", id),
 };
 
-contextBridge.exposeInMainWorld("paracat", api);
+contextBridge.exposeInMainWorld("halo", api);

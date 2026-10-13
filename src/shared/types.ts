@@ -128,7 +128,7 @@ export type AnswerEvent =
   | { id: number; type: "done" }
   | { id: number; type: "error"; message: string };
 
-export interface ParacatApi {
+export interface HaloApi {
   getSettings(): Promise<PublicSettings>;
   updateSettings(update: SettingsUpdate): Promise<PublicSettings>;
   startSession(): Promise<SessionInfo>;

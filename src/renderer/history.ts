@@ -1,4 +1,4 @@
-import type { CallRecord, HistoryItem, HistoryPage, ParacatApi } from "../shared/types";
+import type { CallRecord, HistoryItem, HistoryPage, HaloApi } from "../shared/types";
 
 /** Searching is local and fast, so a short pause after typing is enough. */
 const SEARCH_DEBOUNCE_MS = 250;
@@ -64,7 +64,7 @@ function snippetNodes(snippet: string): Node[] {
   return nodes;
 }
 
-export function initHistory(api: ParacatApi, opts: { onError(message: string): void }): void {
+export function initHistory(api: HaloApi, opts: { onError(message: string): void }): void {
   const el = {
     search: $<HTMLInputElement>("history-search"),
     clear: $<HTMLButtonElement>("history-clear"),

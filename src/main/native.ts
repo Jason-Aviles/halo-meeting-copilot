@@ -21,7 +21,7 @@ export function loadNative(): NativeModule | null {
   try {
     cached = require(path.join(__dirname, "paracat-native.node")) as NativeModule;
   } catch (err) {
-    console.warn("Paracat native add-on unavailable; echo cancellation is off.", err);
+    console.warn("Halo native add-on unavailable; echo cancellation is off.", err);
     cached = null;
   }
   return cached;
@@ -43,7 +43,7 @@ const MEETING_APPS: Record<string, string> = {
   "opera.exe": "Opera",
 };
 
-/** Names the app (other than Paracat) that is recording from a mic, if any. */
+/** Names the app (other than Halo) that is recording from a mic, if any. */
 export function detectMeetingApp(): string | null {
   const native = loadNative();
   if (!native) return null;

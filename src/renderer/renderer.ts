@@ -2,7 +2,7 @@ import type {
   AnswerLength,
   AnswerStyle,
   AssistMode,
-  ParacatApi,
+  HaloApi,
   PublicSettings,
   Speaker,
   TranscriptEvent,
@@ -13,11 +13,11 @@ import { initHistory, showView, type View } from "./history";
 
 declare global {
   interface Window {
-    paracat: ParacatApi;
+    halo: HaloApi;
   }
 }
 
-const api = window.paracat;
+const api = window.halo;
 
 /** How many recent transcript lines to send with each answer request. */
 const MAX_LINES_SENT = 300;

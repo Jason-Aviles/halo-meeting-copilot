@@ -11,7 +11,7 @@ const MAX_ANSWER_TRANSCRIPT_CHARS = 24_000;
 /** Summaries need the whole call. */
 const MAX_SUMMARY_TRANSCRIPT_CHARS = 400_000;
 
-const SETTING = `You're Paracat, working alongside the user during a live call. You receive a running transcript in which "Them" lines are the other people, captured from the computer's speakers, and "You" lines are the user, captured from their microphone. It comes from speech-to-text, so expect misheard words, missing punctuation and sentences split across lines; respond to what was meant, not to the transcription errors.
+const SETTING = `You're Halo, working alongside the user during a live call. You receive a running transcript in which "Them" lines are the other people, captured from the computer's speakers, and "You" lines are the user, captured from their microphone. It comes from speech-to-text, so expect misheard words, missing punctuation and sentences split across lines; respond to what was meant, not to the transcription errors.
 
 The user reads your reply at a glance while the conversation keeps moving, then says it in their own voice. That shapes everything else: the main point comes first, so the opening words on screen are words they can start saying straight away.`;
 
@@ -52,7 +52,7 @@ const LENGTH_GUIDANCE: Record<AnswerLength, string> = {
   detailed: `Length: detailed. About 45-90 seconds spoken (roughly 120-220 words), with concrete specifics. Still no padding.`,
 };
 
-const SUMMARY_INSTRUCTIONS = `You're Paracat, taking notes on a call. You receive a transcript: "Them" lines are the other people (captured from the computer's speakers) and "You" lines are the user (captured from their microphone). It's speech-to-text, so read through misheard words.
+const SUMMARY_INSTRUCTIONS = `You're Halo, taking notes on a call. You receive a transcript: "Them" lines are the other people (captured from the computer's speakers) and "You" lines are the user (captured from their microphone). It's speech-to-text, so read through misheard words.
 
 Write concise notes of the call so far in plain text, with these sections:
 Summary: two to four sentences.

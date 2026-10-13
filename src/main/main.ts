@@ -51,7 +51,7 @@ function createWindow(): void {
     // On systems without it, the page tint alone keeps the window dark.
     backgroundColor: "#00000000",
     backgroundMaterial: "acrylic",
-    title: "Paracat",
+    title: "Halo",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,

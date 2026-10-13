@@ -42,7 +42,7 @@ await Promise.all([
 cpSync("src/renderer/index.html", "dist/renderer/index.html");
 cpSync("src/renderer/styles.css", "dist/renderer/styles.css");
 
-// The native add-on is optional: without it, Paracat runs without echo cancellation.
+// The native add-on is optional: without it, Halo runs without echo cancellation.
 const nativeAddon = "native/out/paracat-native.win32-x64-msvc.node";
 if (existsSync(nativeAddon)) cpSync(nativeAddon, "dist/paracat-native.node");
-else console.warn(`${nativeAddon} not found. Run "npm run build:native" for echo cancellation.`);
+else console.warn(`${nativeAddon} not found. Run "npm run build:native" for echo cancellation in Halo.`);
