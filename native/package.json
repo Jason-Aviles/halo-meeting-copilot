@@ -1,0 +1,9 @@
+{
+  "name": "paracat-native",
+  "version": "0.1.0",
+  "private": true,
+  "napi": {
+    "binaryName": "paracat-native",
+    "targets": ["x86_64-pc-windows-msvc"]
+  }
+}

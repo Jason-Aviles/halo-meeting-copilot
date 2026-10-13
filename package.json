@@ -1,0 +1,27 @@
+{
+  "name": "paracat",
+  "productName": "Paracat",
+  "version": "0.1.0",
+  "description": "Live meeting copilot: transcribes both sides of a call and suggests answers with Claude.",
+  "main": "dist/main.js",
+  "private": true,
+  "scripts": {
+    "build": "node build.mjs",
+    "build:native": "napi build --cwd native --platform --release --no-js --dts index.d.ts --output-dir out",
+    "typecheck": "tsc --noEmit",
+    "start": "node build.mjs && electron ."
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.133.0",
+    "openai": "^7.32.0",
+    "ws": "^8.22.0"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^3.10.8",
+    "@types/node": "^26.6.5",
+    "@types/ws": "^8.18.2",
+    "electron": "^44.7.0",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2"
+  }
+}
