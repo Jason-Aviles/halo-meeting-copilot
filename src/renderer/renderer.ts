@@ -70,6 +70,9 @@ const state = {
 
 const audio = new AudioCapture();
 
+/** Streamed answer text: chunks are appended to one text node rather than re-copying the whole answer. */
+let answerText = document.createTextNode("");
+
 // ---------- helpers ----------
 
 function setStatus(text: string): void {
@@ -224,7 +227,8 @@ async function ask(kind: "answer" | "summary" = "answer"): Promise<void> {
     if (state.interim[speaker]) transcript.push({ speaker, text: state.interim[speaker] });
   }
 
-  el.answer.textContent = "";
+  answerText = document.createTextNode("");
+  el.answer.replaceChildren(answerText);
   el.answer.classList.add("pending");
   // The main process numbers requests 1, 2, 3…; claim the next id now so events
   // from the request this one replaces are ignored even before ask() resolves.
@@ -238,6 +242,8 @@ async function ask(kind: "answer" | "summary" = "answer"): Promise<void> {
     });
   } catch (err) {
     el.answer.classList.remove("pending");
+    // Give the typed question back so it can be sent again after fixing the problem.
+    if (question && !el.question.value) el.question.value = question;
     showError(errorText(err));
   }
 }
@@ -246,7 +252,7 @@ api.onAnswer((event) => {
   // Ignore events from an answer that a newer request replaced.
   if (event.id !== state.answerId) return;
   if (event.type === "delta") {
-    el.answer.textContent += event.text;
+    answerText.appendData(event.text);
     el.answer.scrollTop = el.answer.scrollHeight;
   } else {
     el.answer.classList.remove("pending");
