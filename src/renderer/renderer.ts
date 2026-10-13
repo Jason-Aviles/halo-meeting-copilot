@@ -1,6 +1,7 @@
 import type {
   AnswerLength,
   AnswerStyle,
+  AssistMode,
   ParacatApi,
   PublicSettings,
   Speaker,
@@ -40,17 +41,13 @@ const el = {
   question: $<HTMLInputElement>("input-question"),
   error: $("error"),
   formSettings: $<HTMLFormElement>("form-settings"),
-  setProvider: $<HTMLSelectElement>("set-provider"),
+  setStt: $<HTMLSelectElement>("set-stt"),
+  sttKeyLabel: $("stt-key-label"),
+  setSttKey: $<HTMLInputElement>("set-stt-key"),
   setLanguage: $<HTMLInputElement>("set-language"),
-  setDeepgram: $<HTMLInputElement>("set-deepgram"),
-  setSpeechmatics: $<HTMLInputElement>("set-speechmatics"),
-  setRegion: $<HTMLSelectElement>("set-region"),
-  setAnthropic: $<HTMLInputElement>("set-anthropic"),
-  setMode: $<HTMLSelectElement>("set-mode"),
-  setAi: $<HTMLSelectElement>("set-ai"),
-  setOpenaiModel: $<HTMLSelectElement>("set-openai-model"),
-  setOpenai: $<HTMLInputElement>("set-openai"),
-  setModel: $<HTMLSelectElement>("set-model"),
+  setAiModel: $<HTMLSelectElement>("set-ai-model"),
+  aiKeyLabel: $("ai-key-label"),
+  setAiKey: $<HTMLInputElement>("set-ai-key"),
   setAuto: $<HTMLInputElement>("set-auto"),
   setContext: $<HTMLTextAreaElement>("set-context"),
 };
@@ -252,31 +249,52 @@ api.onAnswer((event) => {
 
 // ---------- settings ----------
 
-function keyPlaceholder(saved: boolean): string {
-  return saved ? "Saved. Type to replace" : "Not set";
+// Settings shows one "service" and one "model" dropdown; each value encodes
+// what used to be two separate dropdowns (provider + region, provider + model).
+
+function sttChoice(s: PublicSettings): string {
+  return s.sttProvider === "speechmatics" ? `speechmatics:${s.speechmaticsRegion}` : "deepgram";
+}
+
+function aiChoice(s: PublicSettings): string {
+  return s.aiProvider === "openai" ? `openai:${s.openaiModel}` : `claude:${s.model}`;
+}
+
+/** Shows the key field for whichever service is selected; other saved keys are kept. */
+function refreshKeyFields(): void {
+  const s = state.settings;
+  const speechmatics = el.setStt.value.startsWith("speechmatics");
+  el.sttKeyLabel.textContent = speechmatics ? "Speechmatics API key" : "Deepgram API key";
+  el.setSttKey.placeholder = (speechmatics ? s?.hasSpeechmaticsKey : s?.hasDeepgramKey)
+    ? "Saved. Type to replace"
+    : "Paste your key";
+
+  const openai = el.setAiModel.value.startsWith("openai:");
+  el.aiKeyLabel.textContent = openai ? "OpenAI API key" : "Anthropic API key";
+  el.setAiKey.placeholder = (openai ? s?.hasOpenAIKey : s?.hasAnthropicKey)
+    ? "Saved. Type to replace"
+    : "Paste your key";
 }
 
 function fillSettingsForm(s: PublicSettings): void {
-  el.setProvider.value = s.sttProvider;
-  el.setMode.value = s.mode;
-  el.setAi.value = s.aiProvider;
-  el.setOpenaiModel.value = s.openaiModel;
-  el.setModel.value = s.model;
+  el.setStt.value = sttChoice(s);
+  el.setAiModel.value = aiChoice(s);
   el.setLanguage.value = s.language;
-  el.setRegion.value = s.speechmaticsRegion;
   el.setAuto.checked = s.autoAnswer;
   el.setContext.value = s.context;
-  const keyFields: Array<[HTMLInputElement, boolean]> = [
-    [el.setDeepgram, s.hasDeepgramKey],
-    [el.setSpeechmatics, s.hasSpeechmaticsKey],
-    [el.setAnthropic, s.hasAnthropicKey],
-    [el.setOpenai, s.hasOpenAIKey],
-  ];
-  for (const [input, saved] of keyFields) {
-    input.value = "";
-    input.placeholder = keyPlaceholder(saved);
-  }
+  el.setSttKey.value = "";
+  el.setAiKey.value = "";
+  refreshKeyFields();
 }
+
+el.setStt.addEventListener("change", () => {
+  el.setSttKey.value = "";
+  refreshKeyFields();
+});
+el.setAiModel.addEventListener("change", () => {
+  el.setAiKey.value = "";
+  refreshKeyFields();
+});
 
 function showSettings(show: boolean): void {
   showView(show ? "settings" : "main");
@@ -285,26 +303,30 @@ function showSettings(show: boolean): void {
 
 el.formSettings.addEventListener("submit", async (event) => {
   event.preventDefault();
-  const keyValue = (input: HTMLInputElement) => (input.value.trim() ? input.value.trim() : undefined);
+  const [sttProvider, region] = el.setStt.value.split(":") as [
+    PublicSettings["sttProvider"],
+    PublicSettings["speechmaticsRegion"] | undefined,
+  ];
+  const [aiProvider, aiModel] = el.setAiModel.value.split(/:(.*)/s) as [PublicSettings["aiProvider"], string];
+  const sttKey = el.setSttKey.value.trim() || undefined;
+  const aiKey = el.setAiKey.value.trim() || undefined;
+
   try {
     state.settings = await api.updateSettings({
-      sttProvider: el.setProvider.value as PublicSettings["sttProvider"],
+      sttProvider,
+      ...(region ? { speechmaticsRegion: region } : {}),
       language: el.setLanguage.value.trim() || "en",
-      speechmaticsRegion: el.setRegion.value as PublicSettings["speechmaticsRegion"],
-      mode: el.setMode.value as PublicSettings["mode"],
-      aiProvider: el.setAi.value as PublicSettings["aiProvider"],
-      openaiModel: el.setOpenaiModel.value as PublicSettings["openaiModel"],
-      model: el.setModel.value as PublicSettings["model"],
+      aiProvider,
+      ...(aiProvider === "openai"
+        ? { openaiModel: aiModel as PublicSettings["openaiModel"], openaiKey: aiKey }
+        : { model: aiModel as PublicSettings["model"], anthropicKey: aiKey }),
+      ...(sttProvider === "speechmatics" ? { speechmaticsKey: sttKey } : { deepgramKey: sttKey }),
       autoAnswer: el.setAuto.checked,
       context: el.setContext.value,
-      deepgramKey: keyValue(el.setDeepgram),
-      speechmaticsKey: keyValue(el.setSpeechmatics),
-      anthropicKey: keyValue(el.setAnthropic),
-      openaiKey: keyValue(el.setOpenai),
     });
     showError(undefined);
     showSettings(false);
-    renderStyleToggles();
+    renderToggles();
     if (state.listening) setStatus("Settings saved. Restart listening to apply them");
   } catch (err) {
     showSettings(false);
@@ -312,31 +334,36 @@ el.formSettings.addEventListener("submit", async (event) => {
   }
 });
 
-// ---------- answer style toggles ----------
+// ---------- one-tap toggles: mode, answer style, answer length ----------
 
+const modeButtons = document.querySelectorAll<HTMLButtonElement>("[data-mode]");
 const styleButtons = document.querySelectorAll<HTMLButtonElement>("[data-style]");
 const lengthButtons = document.querySelectorAll<HTMLButtonElement>("[data-length]");
 
-function renderStyleToggles(): void {
+function renderToggles(): void {
   const s = state.settings;
+  for (const b of modeButtons) b.setAttribute("aria-pressed", String(b.dataset.mode === s?.mode));
   for (const b of styleButtons) b.setAttribute("aria-pressed", String(b.dataset.style === s?.answerStyle));
   for (const b of lengthButtons) b.setAttribute("aria-pressed", String(b.dataset.length === s?.answerLength));
 }
 
-async function setAnswerFormat(update: { answerStyle?: AnswerStyle; answerLength?: AnswerLength }) {
+async function setToggle(update: { mode?: AssistMode; answerStyle?: AnswerStyle; answerLength?: AnswerLength }) {
   try {
     state.settings = await api.updateSettings(update);
-    renderStyleToggles();
+    renderToggles();
   } catch (err) {
     showError(errorText(err));
   }
 }
 
+for (const b of modeButtons) {
+  b.addEventListener("click", () => void setToggle({ mode: b.dataset.mode as AssistMode }));
+}
 for (const b of styleButtons) {
-  b.addEventListener("click", () => void setAnswerFormat({ answerStyle: b.dataset.style as AnswerStyle }));
+  b.addEventListener("click", () => void setToggle({ answerStyle: b.dataset.style as AnswerStyle }));
 }
 for (const b of lengthButtons) {
-  b.addEventListener("click", () => void setAnswerFormat({ answerLength: b.dataset.length as AnswerLength }));
+  b.addEventListener("click", () => void setToggle({ answerLength: b.dataset.length as AnswerLength }));
 }
 
 // ---------- wiring ----------
@@ -373,7 +400,7 @@ api.onShortcut((name) => {
 
 void api.getSettings().then((s) => {
   state.settings = s;
-  renderStyleToggles();
+  renderToggles();
   const sttKey = s.sttProvider === "deepgram" ? s.hasDeepgramKey : s.hasSpeechmaticsKey;
   const aiKey = s.aiProvider === "openai" ? s.hasOpenAIKey : s.hasAnthropicKey;
   if (!sttKey || !aiKey) showSettings(true);

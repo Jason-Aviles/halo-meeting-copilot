@@ -14,18 +14,32 @@
       <div class="brand"><span class="dot" id="status-dot"></span>Paracat</div>
       <div class="status" id="status">Idle</div>
       <div class="window-buttons">
-        <button class="icon" id="btn-history" title="Call history" aria-label="Call history">☰</button>
-        <button class="icon" id="btn-settings" title="Settings" aria-label="Settings">⚙</button>
-        <button class="icon" id="btn-minimize" title="Minimize" aria-label="Minimize">–</button>
-        <button class="icon" id="btn-close" title="Quit" aria-label="Quit">×</button>
+        <button class="icon" id="btn-history" title="Call history" aria-label="Call history">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.25" /><path d="M8 4.75V8l2.25 1.5" /></svg>
+        </button>
+        <button class="icon" id="btn-settings" title="Settings" aria-label="Settings">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4.5h7M12.5 4.5h1M2.5 11.5h1M6.5 11.5h7" /><circle cx="11" cy="4.5" r="1.5" /><circle cx="5" cy="11.5" r="1.5" /></svg>
+        </button>
+        <button class="icon" id="btn-minimize" title="Minimize" aria-label="Minimize">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 8h8" /></svg>
+        </button>
+        <button class="icon close" id="btn-close" title="Quit" aria-label="Quit">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" /></svg>
+        </button>
       </div>
     </header>
 
     <main id="view-main">
       <div class="toolbar">
         <button class="primary" id="btn-session">Start listening</button>
-        <label class="toggle" title="Hide this window from screen sharing and screenshots">
-          <input type="checkbox" id="chk-private" /> Hide from capture
+        <div class="segmented" role="group" aria-label="Mode">
+          <button type="button" data-mode="interview" title="Answer questions put to you">Interview</button>
+          <button type="button" data-mode="meeting" title="Help you contribute and take notes">Meeting</button>
+        </div>
+        <label class="switch" title="Hide this window from screen sharing and screenshots">
+          <input type="checkbox" id="chk-private" role="switch" />
+          <span class="track" aria-hidden="true"></span>
+          <span>Hide</span>
         </label>
       </div>
 
@@ -42,22 +56,22 @@
       <section class="panel answer-panel">
         <div class="panel-head">
           <h2 id="answer-title">Suggested answer</h2>
-          <div class="panel-actions">
-            <div class="segmented" role="group" aria-label="Answer style">
-              <button type="button" data-style="natural" title="Words to say out loud, like you're talking">Natural</button>
-              <button type="button" data-style="polished" title="A strong first line plus bullet talking points">Polished</button>
-            </div>
-            <div class="segmented" role="group" aria-label="Answer length">
-              <button type="button" data-length="brief" title="About 15-30 seconds spoken">Brief</button>
-              <button type="button" data-length="detailed" title="About a minute, with specifics">Detailed</button>
-            </div>
-            <button class="link" id="btn-summary" type="button">Summarize</button>
+          <button class="link" id="btn-summary" type="button">Summarize</button>
+        </div>
+        <div class="chips">
+          <div class="segmented small" role="group" aria-label="Answer style">
+            <button type="button" data-style="natural" title="Words to say out loud, like you're talking">Natural</button>
+            <button type="button" data-style="polished" title="A strong first line plus bullet talking points">Polished</button>
+          </div>
+          <div class="segmented small" role="group" aria-label="Answer length">
+            <button type="button" data-length="brief" title="About 15-30 seconds spoken">Brief</button>
+            <button type="button" data-length="detailed" title="About a minute, with specifics">Detailed</button>
           </div>
         </div>
         <div class="answer" id="answer" aria-live="polite"></div>
         <form class="ask" id="form-ask">
-          <input id="input-question" type="text" placeholder="Ask anything, or leave blank to answer the last question (Ctrl+Shift+Enter)" autocomplete="off" />
-          <button class="primary" type="submit" id="btn-ask">Answer</button>
+          <input id="input-question" type="text" placeholder="Ask anything, or leave blank for the last question" autocomplete="off" />
+          <button class="primary" type="submit" id="btn-ask" title="Ctrl+Shift+Enter">Answer</button>
         </form>
       </section>
 
@@ -66,8 +80,11 @@
 
     <section id="view-history" hidden>
       <div class="search-box">
+        <svg class="search-icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.75" /><path d="M10.5 10.5l3 3" /></svg>
         <input id="history-search" type="search" placeholder="Search calls by title, transcript or notes" autocomplete="off" aria-label="Search calls" />
-        <button class="icon search-clear" id="history-clear" type="button" title="Clear search" aria-label="Clear search" hidden>×</button>
+        <button class="icon search-clear" id="history-clear" type="button" title="Clear search" aria-label="Clear search" hidden>
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 5l6 6M11 5l-6 6" /></svg>
+        </button>
       </div>
       <p class="history-count" id="history-count"></p>
       <ul class="history-list" id="history-list"></ul>
@@ -90,82 +107,58 @@
 
     <section id="view-settings" hidden>
       <form class="settings" id="form-settings">
-        <h2>Speech-to-text</h2>
-        <label>
-          Provider
-          <select id="set-provider">
-            <option value="deepgram">Deepgram</option>
-            <option value="speechmatics">Speechmatics</option>
-          </select>
-        </label>
-        <label>
-          Language
-          <input id="set-language" type="text" placeholder="en" />
-          <small>A language code such as en, es or de. Use multi for mixed languages.</small>
-        </label>
-        <label>
-          Deepgram API key
-          <input id="set-deepgram" type="password" autocomplete="off" />
-        </label>
-        <label>
-          Speechmatics API key
-          <input id="set-speechmatics" type="password" autocomplete="off" />
-        </label>
-        <label>
-          Speechmatics region
-          <select id="set-region">
-            <option value="eu2">Europe (eu2)</option>
-            <option value="us2">United States (us2)</option>
-          </select>
-        </label>
+        <section class="card">
+          <h2>Transcription</h2>
+          <label>
+            Service
+            <select id="set-stt">
+              <option value="deepgram">Deepgram</option>
+              <option value="speechmatics:eu2">Speechmatics · Europe</option>
+              <option value="speechmatics:us2">Speechmatics · United States</option>
+            </select>
+          </label>
+          <label>
+            <span id="stt-key-label">API key</span>
+            <input id="set-stt-key" type="password" autocomplete="off" />
+          </label>
+          <label>
+            Language
+            <input id="set-language" type="text" placeholder="en" />
+            <small>A code such as en, es or de. Use multi for mixed languages.</small>
+          </label>
+        </section>
 
-        <h2>Answers</h2>
-        <label>
-          AI
-          <select id="set-ai">
-            <option value="claude">Claude (Anthropic)</option>
-            <option value="openai">ChatGPT (OpenAI)</option>
-          </select>
-        </label>
-        <label>
-          Mode
-          <select id="set-mode">
-            <option value="interview">Interview: answer questions put to me</option>
-            <option value="meeting">Meeting: help me contribute and take notes</option>
-          </select>
-        </label>
-        <label>
-          Claude model
-          <select id="set-model">
-            <option value="claude-opus-5-5">Opus 5.5: best answers</option>
-            <option value="claude-sonnet-5-5">Sonnet 5.5: faster, still strong</option>
-            <option value="claude-haiku-5-5">Haiku 5.5: fastest, cheapest</option>
-          </select>
-        </label>
-        <label>
-          Anthropic API key
-          <input id="set-anthropic" type="password" autocomplete="off" />
-        </label>
-        <label>
-          ChatGPT model
-          <select id="set-openai-model">
-            <option value="gpt-5.5">GPT-5.5: best answers</option>
-            <option value="gpt-5.4-mini">GPT-5.4 mini: fastest, cheapest</option>
-          </select>
-        </label>
-        <label>
-          OpenAI API key
-          <input id="set-openai" type="password" autocomplete="off" />
-        </label>
-        <label class="toggle">
-          <input type="checkbox" id="set-auto" /> Answer automatically when they ask a question
-        </label>
-        <label>
-          Background notes
-          <textarea id="set-context" rows="7" placeholder="Paste your resume, the role, the meeting agenda, talking points…"></textarea>
-        </label>
+        <section class="card">
+          <h2>AI</h2>
+          <label>
+            Model
+            <select id="set-ai-model">
+              <optgroup label="Claude">
+                <option value="claude:claude-opus-5-5">Claude Opus 5.5 · best answers</option>
+                <option value="claude:claude-sonnet-5-5">Claude Sonnet 5.5 · faster</option>
+                <option value="claude:claude-haiku-5-5">Claude Haiku 5.5 · fastest</option>
+              </optgroup>
+              <optgroup label="ChatGPT">
+                <option value="openai:gpt-5.5">GPT-5.5 · best answers</option>
+                <option value="openai:gpt-5.4-mini">GPT-5.4 mini · fastest</option>
+              </optgroup>
+            </select>
+          </label>
+          <label>
+            <span id="ai-key-label">API key</span>
+            <input id="set-ai-key" type="password" autocomplete="off" />
+          </label>
+          <label class="check">
+            <input type="checkbox" id="set-auto" /> Answer automatically when they ask a question
+          </label>
+        </section>
 
-        <p class="note">Keys are encrypted with Windows' secure storage and never leave this computer except to call the provider. Leave a key field blank to keep the saved key.</p>
+        <section class="card">
+          <h2>Your background</h2>
+          <textarea id="set-context" rows="6" aria-label="Your background" placeholder="Paste your resume, the role, the meeting agenda, talking points…"></textarea>
+        </section>
+
+        <p class="note">Keys are encrypted with Windows secure storage and only sent to the service they belong to. Leave a key blank to keep the saved one.</p>
 
         <div class="settings-actions">
           <button type="button" id="btn-settings-cancel">Back</button>

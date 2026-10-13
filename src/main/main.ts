@@ -47,7 +47,10 @@ function createWindow(): void {
     minHeight: 420,
     frame: false,
     alwaysOnTop: true,
-    backgroundColor: "#121318",
+    // Windows 11 acrylic glass behind a translucent page tint (styles.css --tint).
+    // On systems without it, the page tint alone keeps the window dark.
+    backgroundColor: "#00000000",
+    backgroundMaterial: "acrylic",
     title: "Paracat",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
