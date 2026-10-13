@@ -16,6 +16,7 @@ const api: HaloApi = {
   onAnswer: (listener) => ipcRenderer.on("answer:event", (_e, event) => listener(event)),
   onSttError: (listener) => ipcRenderer.on("stt:error", (_e, message) => listener(message)),
   onShortcut: (listener) => ipcRenderer.on("shortcut", (_e, name) => listener(name)),
+  onNotice: (listener) => ipcRenderer.on("app:notice", (_e, message) => listener(message)),
   onMeetingApp: (listener) => ipcRenderer.on("meeting:app", (_e, app) => listener(app)),
   saveCall: (request) => ipcRenderer.invoke("history:save", request),
   updateCallNotes: (id, notes) => ipcRenderer.invoke("history:updateNotes", id, notes),

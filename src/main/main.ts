@@ -259,12 +259,24 @@ function configureSession(): void {
 }
 
 function registerShortcuts(): void {
-  globalShortcut.register("CommandOrControl+Shift+Enter", () => send("shortcut", "answer"));
-  globalShortcut.register("CommandOrControl+Shift+Space", () => {
-    if (!win) return;
-    if (win.isVisible()) win.hide();
-    else win.showInactive();
-  });
+  const shortcuts: Array<[string, string, () => void]> = [
+    ["CommandOrControl+Shift+Enter", "Ctrl+Shift+Enter (answer)", () => send("shortcut", "answer")],
+    [
+      "CommandOrControl+Shift+Space",
+      "Ctrl+Shift+Space (show/hide)",
+      () => {
+        if (!win) return;
+        if (win.isVisible()) win.hide();
+        else win.showInactive();
+      },
+    ],
+  ];
+  // register() returns false when another app already owns the key combination.
+  const taken = shortcuts.filter(([accel, , fn]) => !globalShortcut.register(accel, fn)).map(([, label]) => label);
+  if (taken.length > 0 && win) {
+    const message = `Another app is using ${taken.join(" and ")}, so that hotkey won't work in Halo.`;
+    win.webContents.once("did-finish-load", () => send("app:notice", message));
+  }
 }
 
 app.whenReady().then(() => {

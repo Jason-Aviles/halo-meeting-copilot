@@ -409,6 +409,7 @@ $("btn-close").addEventListener("click", () => void api.quit());
 
 api.onTranscript(onTranscript);
 api.onSttError((message) => showError(message));
+api.onNotice((message) => showError(message));
 api.onMeetingApp((app) => {
   state.meetingApp = app;
   if (state.listening) setStatus(listeningStatus());

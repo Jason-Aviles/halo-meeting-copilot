@@ -143,6 +143,8 @@ export interface HaloApi {
   onAnswer(listener: (event: AnswerEvent) => void): void;
   onSttError(listener: (message: string) => void): void;
   onShortcut(listener: (name: "answer") => void): void;
+  /** A message from the main process for the user, e.g. a hotkey that couldn't be registered. */
+  onNotice(listener: (message: string) => void): void;
   /** The meeting app currently using a microphone, e.g. "Zoom", or null. */
   onMeetingApp(listener: (app: string | null) => void): void;
   saveCall(request: SaveCallRequest): Promise<number>;
