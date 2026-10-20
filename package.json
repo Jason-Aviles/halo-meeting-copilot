@@ -1,7 +1,7 @@
 {
   "name": "halo",
   "productName": "Halo",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Live meeting copilot: transcribes both sides of a call and suggests answers with Claude or ChatGPT.",
   "author": "Jason Aviles",
   "main": "dist/main.js",
