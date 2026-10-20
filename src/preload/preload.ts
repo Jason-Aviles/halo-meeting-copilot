@@ -23,6 +23,14 @@ const api: HaloApi = {
   searchCalls: (search) => ipcRenderer.invoke("history:search", search),
   getCall: (id) => ipcRenderer.invoke("history:get", id),
   deleteCall: (id) => ipcRenderer.invoke("history:delete", id),
+  listLocalModels: (url) => ipcRenderer.invoke("local:models", url),
+  addSourceFiles: () => ipcRenderer.invoke("sources:addFiles"),
+  addSourceFolder: () => ipcRenderer.invoke("sources:addFolder"),
+  addSourceGithub: (url) => ipcRenderer.invoke("sources:addGithub", url),
+  addSourceJira: (jql) => ipcRenderer.invoke("sources:addJira", jql),
+  refreshSource: (id) => ipcRenderer.invoke("sources:refresh", id),
+  removeSource: (id) => ipcRenderer.invoke("sources:remove", id),
+  setSourceEnabled: (id, enabled) => ipcRenderer.invoke("sources:setEnabled", id, enabled),
 };
 
 contextBridge.exposeInMainWorld("halo", api);

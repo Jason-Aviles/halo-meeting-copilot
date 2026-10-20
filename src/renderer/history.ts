@@ -1,4 +1,5 @@
 import type { CallRecord, HistoryItem, HistoryPage, HaloApi } from "../shared/types";
+import { renderMarkdown } from "./markdown";
 
 /** Searching is local and fast, so a short pause after typing is enough. */
 const SEARCH_DEBOUNCE_MS = 250;
@@ -150,7 +151,8 @@ export function initHistory(api: HaloApi, opts: { onError(message: string): void
     openCallId = call.id;
     el.callTitle.textContent = call.title;
     el.callMeta.textContent = describeTime(call);
-    el.callNotes.textContent = call.notes || "No notes. Press Summarize during a call to add them.";
+    if (call.notes) renderMarkdown(el.callNotes, call.notes);
+    else el.callNotes.textContent = "No minutes yet. Press Minutes during a call to write them.";
 
     el.callTranscript.replaceChildren(
       ...call.transcript.map((line) => {

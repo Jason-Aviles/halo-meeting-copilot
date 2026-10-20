@@ -2,6 +2,7 @@ import {
   app,
   BrowserWindow,
   desktopCapturer,
+  dialog,
   globalShortcut,
   ipcMain,
   session,
@@ -10,6 +11,7 @@ import {
 } from "electron";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { DEFAULT_JIRA_JQL } from "../shared/types";
 import type {
   AnswerEvent,
   AnswerRequest,
@@ -20,10 +22,12 @@ import type {
   Speaker,
   TranscriptEvent,
 } from "../shared/types";
-import { describeAnswerError, streamAnswer } from "./answer";
+import { describeAnswerError, prewarmAnswers, streamAnswer } from "./answer";
 import { deleteCall, getCall, saveCall, searchCalls, updateNotes } from "./history";
 import { detectMeetingApp, loadNative, type NativeEchoCanceller } from "./native";
+import { listLocalModels } from "./ai/local";
 import { getSecret, getSettings, toPublic, updateSettings } from "./settings";
+import { addSource, enabledSourceText, refreshSource, removeSource, setSourceEnabled } from "./sources";
 import { openDeepgram } from "./stt/deepgram";
 import { openSpeechmatics } from "./stt/speechmatics";
 import { withReconnect } from "./stt/reconnect";
@@ -127,6 +131,10 @@ function startSession(): SessionInfo {
   pollMeetingApp();
   meetingAppTimer = setInterval(pollMeetingApp, 3_000);
 
+  // Get the first answer of the call as fast as later ones. Runs in the background.
+  const apiKey = aiKey();
+  if (apiKey || s.aiProvider === "local") void prewarmAnswers(answerSettings(apiKey));
+
   return { echoCancellation: Boolean(echoCanceller) };
 }
 
@@ -167,16 +175,42 @@ function stopSession(): Promise<void> {
   return Promise.all(closing).then(() => undefined);
 }
 
+/** The key for the selected AI provider; "" for a local model or when none is saved. */
+function aiKey(): string {
+  const provider = getSettings().aiProvider;
+  if (provider === "local") return "";
+  return getSecret(provider === "openai" ? "openaiKey" : "anthropicKey") ?? "";
+}
+
+/** Everything an answer needs from Settings except the request itself. */
+function answerSettings(apiKey: string) {
+  const settings = getSettings();
+  return {
+    provider: settings.aiProvider,
+    apiKey,
+    claudeModel: settings.model,
+    openaiModel: settings.openaiModel,
+    localUrl: settings.localUrl,
+    localModel: settings.localModel,
+    mode: settings.mode,
+    style: settings.answerStyle,
+    length: settings.answerLength,
+    notesFormat: settings.notesFormat,
+    context: settings.context,
+    references: enabledSourceText(),
+  };
+}
+
 function ask(request: AnswerRequest): number {
   // Number every request, even ones that fail, so the window's expected id stays in step.
   const id = ++answerSeq;
   answerAbort?.abort();
 
   const settings = getSettings();
-  const openai = settings.aiProvider === "openai";
-  const apiKey = getSecret(openai ? "openaiKey" : "anthropicKey");
-  if (!apiKey) {
-    throw new Error(`Add your ${openai ? "OpenAI" : "Anthropic"} API key in Settings first.`);
+  const provider = settings.aiProvider;
+  const apiKey = aiKey();
+  if (provider !== "local" && !apiKey) {
+    throw new Error(`Add your ${provider === "openai" ? "OpenAI" : "Anthropic"} API key in Settings first.`);
   }
 
   const abort = new AbortController();
@@ -184,18 +218,19 @@ function ask(request: AnswerRequest): number {
   const emit = (event: AnswerEvent) => send("answer:event", event);
 
   streamAnswer({
-    provider: settings.aiProvider,
-    apiKey,
-    claudeModel: settings.model,
-    openaiModel: settings.openaiModel,
-    mode: settings.mode,
-    style: settings.answerStyle,
-    length: settings.answerLength,
-    context: settings.context,
+    ...answerSettings(apiKey),
     request: {
       kind: request.kind === "summary" ? "summary" : "answer",
       transcript: Array.isArray(request.transcript) ? request.transcript : [],
       question: typeof request.question === "string" ? request.question : undefined,
+      meeting:
+        request.meeting && Number.isFinite(Number(request.meeting.startedAt))
+          ? {
+              startedAt: Number(request.meeting.startedAt),
+              app: typeof request.meeting.app === "string" ? request.meeting.app.slice(0, 60) : null,
+              ...(Number.isFinite(Number(request.meeting.endedAt)) ? { endedAt: Number(request.meeting.endedAt) } : {}),
+            }
+          : undefined,
     },
     signal: abort.signal,
     onText: (text) => emit({ id, type: "delta", text }),
@@ -203,13 +238,27 @@ function ask(request: AnswerRequest): number {
     .then(() => emit({ id, type: "done" }))
     .catch((err) => {
       if (abort.signal.aborted) emit({ id, type: "done" });
-      else emit({ id, type: "error", message: describeAnswerError(err) });
+      else emit({ id, type: "error", message: describeAnswerError(provider, err) });
     })
     .finally(() => {
       if (answerAbort === abort) answerAbort = undefined;
     });
 
   return id;
+}
+
+/** Paths come only from the system picker, never from the page. */
+async function pickAndAdd(kind: "file" | "folder") {
+  const result = await dialog.showOpenDialog(win!, {
+    title: kind === "file" ? "Add reference files" : "Add a folder or local repo",
+    properties: kind === "file" ? ["openFile", "multiSelections"] : ["openDirectory"],
+    ...(kind === "file"
+      ? { filters: [{ name: "Text and code", extensions: ["md", "txt", "markdown", "rst", "json", "yaml", "yml", "csv", "html", "ts", "js", "py", "*"] }] }
+      : {}),
+  });
+  let sources = toPublic().sources;
+  for (const p of result.canceled ? [] : result.filePaths) sources = await addSource(kind, p);
+  return sources;
 }
 
 function registerIpc(): void {
@@ -229,6 +278,14 @@ function registerIpc(): void {
   );
   handle("history:get", (id: number) => getCall(Number(id)) ?? null);
   handle("history:delete", (id: number) => deleteCall(Number(id)));
+  handle("local:models", (url: string) => listLocalModels(String(url)));
+  handle("sources:addFiles", () => pickAndAdd("file"));
+  handle("sources:addFolder", () => pickAndAdd("folder"));
+  handle("sources:addGithub", (url: string) => addSource("github", String(url)));
+  handle("sources:addJira", (jql: string) => addSource("jira", String(jql).trim() || DEFAULT_JIRA_JQL));
+  handle("sources:refresh", (id: string) => refreshSource(String(id)));
+  handle("sources:remove", (id: string) => removeSource(String(id)));
+  handle("sources:setEnabled", (id: string, on: boolean) => setSourceEnabled(String(id), Boolean(on)));
 
   ipcMain.on("audio:chunk", (event, speaker: Speaker, pcm16: ArrayBuffer) => {
     if (!fromOurPage(event)) return;

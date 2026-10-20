@@ -3,6 +3,8 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   CLAUDE_MODELS,
+  DEFAULT_LOCAL_URL,
+  NOTES_FORMATS,
   OPENAI_MODELS,
   SPEECHMATICS_REGIONS,
   type AiProvider,
@@ -10,15 +12,18 @@ import {
   type AnswerStyle,
   type AssistMode,
   type ClaudeModel,
+  type NotesFormat,
   type OpenAIModel,
   type PublicSettings,
   type SettingsUpdate,
   type SpeechmaticsRegion,
   type SttProvider,
 } from "../shared/types";
+import { normalizeLocalUrl } from "./ai/local";
+import { listSources } from "./sources";
 
-type SecretName = "deepgramKey" | "speechmaticsKey" | "anthropicKey" | "openaiKey";
-const SECRET_NAMES: SecretName[] = ["deepgramKey", "speechmaticsKey", "anthropicKey", "openaiKey"];
+type SecretName = "deepgramKey" | "speechmaticsKey" | "anthropicKey" | "openaiKey" | "jiraToken";
+const SECRET_NAMES: SecretName[] = ["deepgramKey", "speechmaticsKey", "anthropicKey", "openaiKey", "jiraToken"];
 
 interface StoredSettings {
   sttProvider: SttProvider;
@@ -27,11 +32,17 @@ interface StoredSettings {
   aiProvider: AiProvider;
   model: ClaudeModel;
   openaiModel: OpenAIModel;
+  localUrl: string;
+  localModel: string;
   mode: AssistMode;
   answerStyle: AnswerStyle;
   answerLength: AnswerLength;
+  notesFormat: NotesFormat;
   context: string;
   autoAnswer: boolean;
+  /** e.g. "yourcompany.atlassian.net" */
+  jiraSite: string;
+  jiraEmail: string;
   /** Each value is encrypted with the OS keychain (DPAPI on Windows) and base64-encoded. */
   secrets: Partial<Record<SecretName, string>>;
 }
@@ -43,11 +54,16 @@ const DEFAULTS: StoredSettings = {
   aiProvider: "claude",
   model: "claude-opus-5-5",
   openaiModel: "gpt-5.5",
+  localUrl: DEFAULT_LOCAL_URL,
+  localModel: "",
   mode: "interview",
   answerStyle: "natural",
   answerLength: "brief",
+  notesFormat: "standard",
   context: "",
   autoAnswer: false,
+  jiraSite: "",
+  jiraEmail: "",
   secrets: {},
 };
 
@@ -69,6 +85,22 @@ function load(): StoredSettings {
 function save(settings: StoredSettings): void {
   fs.mkdirSync(path.dirname(settingsFile()), { recursive: true });
   fs.writeFileSync(settingsFile(), JSON.stringify(settings, null, 2));
+}
+
+/** Accepts "yourco", "yourco.atlassian.net" or a full link; keeps just the host. */
+function normalizeJiraSite(input: string): string {
+  const trimmed = String(input).trim();
+  if (!trimmed) return "";
+  let host = "";
+  try {
+    host = /^[a-z0-9-]+$/i.test(trimmed)
+      ? `${trimmed}.atlassian.net`
+      : new URL(/^https?:\/\//.test(trimmed) ? trimmed : `https://${trimmed}`).hostname;
+  } catch {
+    // Reported below.
+  }
+  if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(host)) throw new Error("Enter your Jira site, like yourcompany.atlassian.net");
+  return host.toLowerCase();
 }
 
 export function getSettings(): StoredSettings {
@@ -94,11 +126,18 @@ export function toPublic(): PublicSettings {
     aiProvider: s.aiProvider,
     model: s.model,
     openaiModel: s.openaiModel,
+    localUrl: s.localUrl,
+    localModel: s.localModel,
     mode: s.mode,
     answerStyle: s.answerStyle,
     answerLength: s.answerLength,
+    notesFormat: s.notesFormat,
     context: s.context,
     autoAnswer: s.autoAnswer,
+    sources: listSources(),
+    jiraSite: s.jiraSite,
+    jiraEmail: s.jiraEmail,
+    hasJiraToken: Boolean(s.secrets.jiraToken),
     hasDeepgramKey: Boolean(s.secrets.deepgramKey),
     hasSpeechmaticsKey: Boolean(s.secrets.speechmaticsKey),
     hasAnthropicKey: Boolean(s.secrets.anthropicKey),
@@ -128,7 +167,7 @@ export function updateSettings(update: SettingsUpdate): PublicSettings {
     s.language = update.language;
   }
   if (update.aiProvider !== undefined) {
-    if (update.aiProvider !== "claude" && update.aiProvider !== "openai") {
+    if (update.aiProvider !== "claude" && update.aiProvider !== "openai" && update.aiProvider !== "local") {
       throw new Error(`Unknown AI provider: ${update.aiProvider}`);
     }
     s.aiProvider = update.aiProvider;
@@ -139,6 +178,8 @@ export function updateSettings(update: SettingsUpdate): PublicSettings {
     }
     s.openaiModel = update.openaiModel;
   }
+  if (update.localUrl !== undefined) s.localUrl = normalizeLocalUrl(update.localUrl || DEFAULT_LOCAL_URL);
+  if (update.localModel !== undefined) s.localModel = String(update.localModel).trim().slice(0, 300);
   if (update.answerStyle !== undefined) {
     if (update.answerStyle !== "natural" && update.answerStyle !== "polished") {
       throw new Error(`Unknown answer style: ${update.answerStyle}`);
@@ -150,6 +191,10 @@ export function updateSettings(update: SettingsUpdate): PublicSettings {
       throw new Error(`Unknown answer length: ${update.answerLength}`);
     }
     s.answerLength = update.answerLength;
+  }
+  if (update.notesFormat !== undefined) {
+    if (!NOTES_FORMATS.includes(update.notesFormat)) throw new Error(`Unknown notes format: ${update.notesFormat}`);
+    s.notesFormat = update.notesFormat;
   }
   if (update.model !== undefined) {
     if (!CLAUDE_MODELS.includes(update.model)) throw new Error(`Unknown model: ${update.model}`);
@@ -163,6 +208,8 @@ export function updateSettings(update: SettingsUpdate): PublicSettings {
   }
   if (update.context !== undefined) s.context = String(update.context).slice(0, 20_000);
   if (update.autoAnswer !== undefined) s.autoAnswer = Boolean(update.autoAnswer);
+  if (update.jiraSite !== undefined) s.jiraSite = normalizeJiraSite(update.jiraSite);
+  if (update.jiraEmail !== undefined) s.jiraEmail = String(update.jiraEmail).trim().slice(0, 200);
 
   for (const name of SECRET_NAMES) {
     const value = update[name];

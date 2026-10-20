@@ -37,7 +37,29 @@ export const OPENAI_MODELS = [
 ] as const;
 export type OpenAIModel = (typeof OPENAI_MODELS)[number];
 
-export type AiProvider = "claude" | "openai";
+/** "local" is any OpenAI-compatible server on your machine or network, such as LM Studio or Ollama. */
+export type AiProvider = "claude" | "openai" | "local";
+
+export const DEFAULT_LOCAL_URL = "http://localhost:1234/v1";
+
+/** The tickets assigned to you that aren't done, most recently updated first. */
+export const DEFAULT_JIRA_JQL = "assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC";
+
+/** A document, folder or repository whose text answers can draw on. */
+export interface SourceInfo {
+  id: string;
+  kind: "file" | "folder" | "github" | "jira";
+  /** A file or folder path, a GitHub URL, or a Jira JQL query. */
+  location: string;
+  title: string;
+  /** Included in answers when true. */
+  enabled: boolean;
+  /** Characters of text captured on the last refresh. */
+  chars: number;
+  /** How many files that text came from. */
+  files: number;
+  refreshedAt: number;
+}
 
 /** Interview: answer questions put to you. Meeting: help you contribute and take notes. */
 export type AssistMode = "interview" | "meeting";
@@ -48,6 +70,10 @@ export type AnswerStyle = "natural" | "polished";
 /** Brief: about 15-30 seconds spoken. Detailed: about a minute, with specifics. */
 export type AnswerLength = "brief" | "detailed";
 
+/** Which minutes template Summarize uses in Meeting mode. Interview mode always writes a debrief. */
+export const NOTES_FORMATS = ["standard", "client", "kickoff", "board", "brainstorm"] as const;
+export type NotesFormat = (typeof NOTES_FORMATS)[number];
+
 /** Settings as the window sees them: secrets are reported only as present/absent. */
 export interface PublicSettings {
   sttProvider: SttProvider;
@@ -56,11 +82,18 @@ export interface PublicSettings {
   aiProvider: AiProvider;
   model: ClaudeModel;
   openaiModel: OpenAIModel;
+  localUrl: string;
+  localModel: string;
   mode: AssistMode;
   answerStyle: AnswerStyle;
   answerLength: AnswerLength;
+  notesFormat: NotesFormat;
   context: string;
   autoAnswer: boolean;
+  sources: SourceInfo[];
+  jiraSite: string;
+  jiraEmail: string;
+  hasJiraToken: boolean;
   hasDeepgramKey: boolean;
   hasSpeechmaticsKey: boolean;
   hasAnthropicKey: boolean;
@@ -75,11 +108,17 @@ export interface SettingsUpdate {
   aiProvider?: AiProvider;
   model?: ClaudeModel;
   openaiModel?: OpenAIModel;
+  localUrl?: string;
+  localModel?: string;
   mode?: AssistMode;
   answerStyle?: AnswerStyle;
   answerLength?: AnswerLength;
+  notesFormat?: NotesFormat;
   context?: string;
   autoAnswer?: boolean;
+  jiraSite?: string;
+  jiraEmail?: string;
+  jiraToken?: string;
   deepgramKey?: string;
   speechmaticsKey?: string;
   anthropicKey?: string;
@@ -104,7 +143,10 @@ export interface AnswerRequest {
   /** "answer" suggests what to say next; "summary" writes meeting notes. */
   kind: "answer" | "summary";
   transcript: TranscriptLine[];
+  /** For an answer, what to answer; for a summary, extra instructions such as "focus on the budget". */
   question?: string;
+  /** When the call started and where, for the notes header. */
+  meeting?: { startedAt: number; app: string | null; endedAt?: number };
 }
 
 export interface SaveCallRequest {
@@ -177,4 +219,15 @@ export interface HaloApi {
   searchCalls(search: HistorySearch): Promise<HistoryPage>;
   getCall(id: number): Promise<CallRecord | null>;
   deleteCall(id: number): Promise<void>;
+  /** Model ids offered by a local server, e.g. LM Studio's loaded models. */
+  listLocalModels(url: string): Promise<string[]>;
+  /** Each of these opens a picker or fetches, then returns the updated list. */
+  addSourceFiles(): Promise<SourceInfo[]>;
+  addSourceFolder(): Promise<SourceInfo[]>;
+  addSourceGithub(url: string): Promise<SourceInfo[]>;
+  /** Uses the Jira site, email and token saved in Settings. */
+  addSourceJira(jql: string): Promise<SourceInfo[]>;
+  refreshSource(id: string): Promise<SourceInfo[]>;
+  removeSource(id: string): Promise<SourceInfo[]>;
+  setSourceEnabled(id: string, enabled: boolean): Promise<SourceInfo[]>;
 }

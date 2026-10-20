@@ -3,6 +3,7 @@ import type {
   AnswerStyle,
   AssistMode,
   HaloApi,
+  NotesFormat,
   PublicSettings,
   Speaker,
   TranscriptEvent,
@@ -10,6 +11,9 @@ import type {
 } from "../shared/types";
 import { AudioCapture } from "./audio";
 import { initHistory, showView, type View } from "./history";
+import { renderMarkdown } from "./markdown";
+import { endsWithQuestion } from "./questions";
+import { initReferences } from "./references";
 import { TranscriptView } from "./transcript-view";
 
 declare global {
@@ -22,8 +26,11 @@ const api = window.halo;
 
 /** How many recent transcript lines to send with each answer request. */
 const MAX_LINES_SENT = 300;
-/** Wait this long after a question ends before auto-answering, in case they keep talking. */
-const AUTO_ANSWER_DELAY_MS = 800;
+/**
+ * Wait this long after their last words before auto-answering. Any new speech
+ * from them in the meantime resets it, so a pause mid-question doesn't trigger.
+ */
+const AUTO_ANSWER_DELAY_MS = 900;
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -50,7 +57,18 @@ const el = {
   aiKeyLabel: $("ai-key-label"),
   setAiKey: $<HTMLInputElement>("set-ai-key"),
   setAuto: $<HTMLInputElement>("set-auto"),
+  setNotesFormat: $<HTMLSelectElement>("set-notes-format"),
   setContext: $<HTMLTextAreaElement>("set-context"),
+  aiKeyField: $("ai-key-field"),
+  localFields: $("local-fields"),
+  setLocalUrl: $<HTMLInputElement>("set-local-url"),
+  setLocalModel: $<HTMLInputElement>("set-local-model"),
+  localModels: $<HTMLDataListElement>("local-models"),
+  localStatus: $("local-status"),
+  btnLocalRefresh: $<HTMLButtonElement>("btn-local-refresh"),
+  settingsError: $("settings-error"),
+  chipModelText: $("chip-model-text"),
+  btnCopy: $<HTMLButtonElement>("btn-copy"),
 };
 
 const state = {
@@ -63,16 +81,24 @@ const state = {
   meetingApp: null as string | null,
   echoCancellation: false,
   callStartedAt: 0,
+  callEndedAt: 0,
+  /** The meeting app seen during the current or last call; it stays after the call ends. */
+  lastMeetingApp: null as string | null,
   /** Id of the call saved when listening last stopped; a later summary is attached to it. */
   savedCallId: null as number | null,
   lastSummary: "",
   autoTimer: undefined as number | undefined,
+  /** The "Them" turn last auto-answered, so the same question isn't answered twice. */
+  lastAutoAnswered: "",
 };
 
 const audio = new AudioCapture();
 
 /** Streamed answer text: chunks are appended to one text node rather than re-copying the whole answer. */
 let answerText = document.createTextNode("");
+/** The raw Markdown of the minutes being written; re-rendered at most once a frame. */
+let notesMarkdown = "";
+let notesFrame = 0;
 
 // ---------- helpers ----------
 
@@ -89,8 +115,13 @@ function listeningStatus(): string {
 }
 
 function showError(message: string | undefined): void {
-  el.error.hidden = !message;
-  el.error.textContent = message ?? "";
+  // Show it wherever the user is looking: the settings form has its own slot.
+  const inSettings = !el.viewSettings.hidden;
+  const target = inSettings ? el.settingsError : el.error;
+  const other = inSettings ? el.error : el.settingsError;
+  target.hidden = !message;
+  target.textContent = message ?? "";
+  other.hidden = true;
 }
 
 function errorText(err: unknown): string {
@@ -115,6 +146,8 @@ function onTranscript(event: TranscriptEvent): void {
   if (!event.isFinal) {
     state.interim[event.speaker] = event.text;
     transcriptView.setPartial(event.speaker, event.text);
+    // They're still talking, so a pending auto-answer waits for them to finish.
+    if (event.speaker === "them" && event.text.trim()) window.clearTimeout(state.autoTimer);
   } else {
     state.interim[event.speaker] = "";
     transcriptView.setPartial(event.speaker, "");
@@ -129,9 +162,16 @@ function onTranscript(event: TranscriptEvent): void {
       transcriptView.append(line);
     }
 
-    if (event.speaker === "them" && state.settings?.autoAnswer && /\?\s*$/.test(event.text)) {
+    if (event.speaker === "them" && state.listening && state.settings?.autoAnswer) {
       window.clearTimeout(state.autoTimer);
-      state.autoTimer = window.setTimeout(() => void ask(), AUTO_ANSWER_DELAY_MS);
+      // Judge their whole turn so far, not just this chunk: questions often span chunks.
+      const turn = state.lines[state.lines.length - 1];
+      if (turn.speaker === "them" && turn.text !== state.lastAutoAnswered && endsWithQuestion(turn.text)) {
+        state.autoTimer = window.setTimeout(() => {
+          state.lastAutoAnswered = turn.text;
+          void ask();
+        }, AUTO_ANSWER_DELAY_MS);
+      }
     }
   }
 }
@@ -142,6 +182,8 @@ async function startListening(): Promise<void> {
   showError(undefined);
   el.btnSession.disabled = true;
   setStatus("Starting…");
+  // Reset before starting: the main process reports the meeting app while it starts.
+  state.lastMeetingApp = null;
   try {
     const session = await api.startSession();
     state.echoCancellation = session.echoCancellation;
@@ -152,6 +194,7 @@ async function startListening(): Promise<void> {
     state.interim = { you: "", them: "" };
     renderTranscript();
     state.callStartedAt = Date.now();
+    state.callEndedAt = 0;
     state.savedCallId = null;
     state.lastSummary = "";
     el.btnSession.textContent = "Stop listening";
@@ -174,6 +217,7 @@ async function stopListening(): Promise<void> {
   await api.stopSession().catch(() => {});
   el.btnSession.disabled = false;
   state.listening = false;
+  state.callEndedAt = Date.now();
   // Keep any words still only in a partial result rather than dropping them.
   for (const speaker of ["them", "you"] as const) {
     const text = state.interim[speaker].trim();
@@ -191,8 +235,8 @@ async function saveCurrentCall(): Promise<void> {
   try {
     state.savedCallId = await api.saveCall({
       startedAt: state.callStartedAt || Date.now(),
-      endedAt: Date.now(),
-      meetingApp: state.meetingApp,
+      endedAt: state.callEndedAt || Date.now(),
+      meetingApp: state.lastMeetingApp,
       transcript: state.lines,
       notes: state.lastSummary,
     });
@@ -207,10 +251,15 @@ async function saveCurrentCall(): Promise<void> {
 async function ask(kind: "answer" | "summary" = "answer"): Promise<void> {
   window.clearTimeout(state.autoTimer);
   showError(undefined);
-  const question = kind === "answer" ? el.question.value : "";
-  if (kind === "answer") el.question.value = "";
-  el.answerTitle.textContent = kind === "summary" ? "Meeting notes" : "Suggested answer";
+  // For minutes, anything typed in the box becomes extra instructions ("focus on the budget").
+  const question = el.question.value;
+  el.question.value = "";
+  const interview = state.settings?.mode === "interview";
+  el.answerTitle.textContent = kind === "summary" ? (interview ? "Interview debrief" : "Minutes") : "Suggested answer";
   state.answerKind = kind;
+  el.answer.classList.toggle("notes", kind === "summary");
+  el.btnCopy.hidden = true;
+  notesMarkdown = "";
 
   const transcript = [...state.lines];
   for (const speaker of ["them", "you"] as const) {
@@ -229,6 +278,12 @@ async function ask(kind: "answer" | "summary" = "answer"): Promise<void> {
       // Notes cover the whole call; answers only need the recent part.
       transcript: kind === "summary" ? transcript : transcript.slice(-MAX_LINES_SENT),
       question,
+      meeting: {
+        startedAt: state.callStartedAt || Date.now(),
+        app: state.meetingApp ?? state.lastMeetingApp,
+        // After the call, its length is fixed rather than still counting.
+        ...(!state.listening && state.callEndedAt ? { endedAt: state.callEndedAt } : {}),
+      },
     });
   } catch (err) {
     el.answer.classList.remove("pending");
@@ -242,12 +297,29 @@ api.onAnswer((event) => {
   // Ignore events from an answer that a newer request replaced.
   if (event.id !== state.answerId) return;
   if (event.type === "delta") {
-    answerText.appendData(event.text);
-    el.answer.scrollTop = el.answer.scrollHeight;
+    if (state.answerKind === "summary") {
+      notesMarkdown += event.text;
+      if (!notesFrame) {
+        notesFrame = requestAnimationFrame(() => {
+          notesFrame = 0;
+          renderMarkdown(el.answer, notesMarkdown);
+          el.answer.scrollTop = el.answer.scrollHeight;
+        });
+      }
+    } else {
+      answerText.appendData(event.text);
+      el.answer.scrollTop = el.answer.scrollHeight;
+    }
   } else {
     el.answer.classList.remove("pending");
+    if (state.answerKind === "summary" && notesMarkdown) {
+      cancelAnimationFrame(notesFrame);
+      notesFrame = 0;
+      renderMarkdown(el.answer, notesMarkdown);
+    }
+    el.btnCopy.hidden = !(el.answer.textContent ?? "").trim();
     if (event.type === "done" && state.answerKind === "summary") {
-      state.lastSummary = el.answer.textContent ?? "";
+      state.lastSummary = notesMarkdown;
       if (state.savedCallId !== null && state.lastSummary) {
         void api.updateCallNotes(state.savedCallId, state.lastSummary).catch(() => {});
       }
@@ -266,7 +338,19 @@ function sttChoice(s: PublicSettings): string {
 }
 
 function aiChoice(s: PublicSettings): string {
+  if (s.aiProvider === "local") return "local:";
   return s.aiProvider === "openai" ? `openai:${s.openaiModel}` : `claude:${s.model}`;
+}
+
+/** A short name for the model chip, e.g. "Opus 5.5" or "Local · qwen3-8b". */
+function modelLabel(s: PublicSettings): string {
+  if (s.aiProvider === "local") return s.localModel ? `Local · ${s.localModel.split("/").pop()}` : "Local";
+  const option = [...el.setAiModel.options].find((o) => o.value === aiChoice(s));
+  return (option?.textContent ?? s.model).split(" · ")[0].replace(/^Claude /, "");
+}
+
+function renderModelChip(): void {
+  if (state.settings) el.chipModelText.textContent = modelLabel(state.settings);
 }
 
 /** Shows the key field for whichever service is selected; other saved keys are kept. */
@@ -277,6 +361,10 @@ function refreshKeyFields(): void {
   el.setSttKey.placeholder = (speechmatics ? s?.hasSpeechmaticsKey : s?.hasDeepgramKey)
     ? "Saved. Type to replace"
     : "Paste your key";
+
+  const local = el.setAiModel.value.startsWith("local:");
+  el.aiKeyField.hidden = local;
+  el.localFields.hidden = !local;
 
   const openai = el.setAiModel.value.startsWith("openai:");
   el.aiKeyLabel.textContent = openai ? "OpenAI API key" : "Anthropic API key";
@@ -291,6 +379,9 @@ function fillSettingsForm(s: PublicSettings): void {
   el.setLanguage.value = s.language;
   el.setAuto.checked = s.autoAnswer;
   el.setContext.value = s.context;
+  el.setNotesFormat.value = s.notesFormat;
+  el.setLocalUrl.value = s.localUrl;
+  el.setLocalModel.value = s.localModel;
   el.setSttKey.value = "";
   el.setAiKey.value = "";
   refreshKeyFields();
@@ -305,10 +396,45 @@ el.setAiModel.addEventListener("change", () => {
   refreshKeyFields();
 });
 
-function showSettings(show: boolean): void {
+type SettingsTab = "speech" | "ai" | "context";
+const tabButtons = document.querySelectorAll<HTMLButtonElement>("[data-tab]");
+const panes = document.querySelectorAll<HTMLElement>("[data-pane]");
+
+function showTab(tab: SettingsTab): void {
+  for (const b of tabButtons) {
+    b.setAttribute("aria-pressed", String(b.dataset.tab === tab));
+    b.setAttribute("aria-selected", String(b.dataset.tab === tab));
+  }
+  for (const p of panes) p.hidden = p.dataset.pane !== tab;
+}
+for (const b of tabButtons) b.addEventListener("click", () => showTab(b.dataset.tab as SettingsTab));
+
+function showSettings(show: boolean, tab?: SettingsTab): void {
+  el.settingsError.hidden = true;
   showView(show ? "settings" : "main");
   if (show && state.settings) fillSettingsForm(state.settings);
+  if (show) showTab(tab ?? "speech");
 }
+
+async function findLocalModels(): Promise<void> {
+  el.btnLocalRefresh.disabled = true;
+  el.localStatus.textContent = "Asking the server…";
+  try {
+    const models = await api.listLocalModels(el.setLocalUrl.value || "http://localhost:1234/v1");
+    el.localModels.replaceChildren(
+      ...models.map((id) => Object.assign(document.createElement("option"), { value: id })),
+    );
+    if (models.length && !models.includes(el.setLocalModel.value)) el.setLocalModel.value = models[0];
+    el.localStatus.textContent = models.length
+      ? `Found ${models.length} model${models.length === 1 ? "" : "s"}. Pick one from the list.`
+      : "The server is running but has no models loaded. Load one in LM Studio first.";
+  } catch {
+    el.localStatus.textContent = "Couldn't reach the server. Start LM Studio's local server (or Ollama) and try again.";
+  } finally {
+    el.btnLocalRefresh.disabled = false;
+  }
+}
+el.btnLocalRefresh.addEventListener("click", () => void findLocalModels());
 
 el.formSettings.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -319,6 +445,12 @@ el.formSettings.addEventListener("submit", async (event) => {
   const [aiProvider, aiModel] = el.setAiModel.value.split(/:(.*)/s) as [PublicSettings["aiProvider"], string];
   const sttKey = el.setSttKey.value.trim() || undefined;
   const aiKey = el.setAiKey.value.trim() || undefined;
+  const aiUpdate =
+    aiProvider === "local"
+      ? { localUrl: el.setLocalUrl.value, localModel: el.setLocalModel.value }
+      : aiProvider === "openai"
+        ? { openaiModel: aiModel as PublicSettings["openaiModel"], openaiKey: aiKey }
+        : { model: aiModel as PublicSettings["model"], anthropicKey: aiKey };
 
   try {
     state.settings = await api.updateSettings({
@@ -326,21 +458,31 @@ el.formSettings.addEventListener("submit", async (event) => {
       ...(region ? { speechmaticsRegion: region } : {}),
       language: el.setLanguage.value.trim() || "en",
       aiProvider,
-      ...(aiProvider === "openai"
-        ? { openaiModel: aiModel as PublicSettings["openaiModel"], openaiKey: aiKey }
-        : { model: aiModel as PublicSettings["model"], anthropicKey: aiKey }),
+      ...aiUpdate,
       ...(sttProvider === "speechmatics" ? { speechmaticsKey: sttKey } : { deepgramKey: sttKey }),
       autoAnswer: el.setAuto.checked,
+      notesFormat: el.setNotesFormat.value as NotesFormat,
       context: el.setContext.value,
     });
-    showError(undefined);
     showSettings(false);
+    showError(undefined);
     renderToggles();
+    renderModelChip();
+    references.render();
     if (state.listening) setStatus("Settings saved. Restart listening to apply them");
   } catch (err) {
-    showSettings(false);
+    // Stay on the form so the problem can be fixed.
     showError(errorText(err));
   }
+});
+
+const references = initReferences(api, {
+  getSources: () => state.settings?.sources ?? [],
+  onChange: (sources) => {
+    if (state.settings) state.settings.sources = sources;
+  },
+  onError: (message) => showError(message),
+  onManage: () => showSettings(true, "context"),
 });
 
 // ---------- one-tap toggles: mode, answer style, answer length ----------
@@ -386,6 +528,17 @@ el.formAsk.addEventListener("submit", (event) => {
   void ask();
 });
 $("btn-summary").addEventListener("click", () => void ask("summary"));
+$("chip-model").addEventListener("click", () => showSettings(true, "ai"));
+el.btnCopy.addEventListener("click", async () => {
+  const text = state.answerKind === "summary" ? notesMarkdown : (el.answer.textContent ?? "");
+  try {
+    await navigator.clipboard.writeText(text.trim());
+    el.btnCopy.textContent = "Copied";
+    window.setTimeout(() => (el.btnCopy.textContent = "Copy"), 1500);
+  } catch {
+    showError("Couldn't copy to the clipboard.");
+  }
+});
 $("btn-clear").addEventListener("click", () => {
   state.lines = [];
   state.interim = { you: "", them: "" };
@@ -402,6 +555,8 @@ api.onSttError((message) => showError(message));
 api.onNotice((message) => showError(message));
 api.onMeetingApp((app) => {
   state.meetingApp = app;
+  // Detection only runs during a session, so any app reported belongs to this call.
+  if (app) state.lastMeetingApp = app;
   if (state.listening) setStatus(listeningStatus());
 });
 api.onShortcut((name) => {
@@ -411,7 +566,10 @@ api.onShortcut((name) => {
 void api.getSettings().then((s) => {
   state.settings = s;
   renderToggles();
+  renderModelChip();
+  references.render();
   const sttKey = s.sttProvider === "deepgram" ? s.hasDeepgramKey : s.hasSpeechmaticsKey;
-  const aiKey = s.aiProvider === "openai" ? s.hasOpenAIKey : s.hasAnthropicKey;
-  if (!sttKey || !aiKey) showSettings(true);
+  const aiKey = s.aiProvider === "local" || (s.aiProvider === "openai" ? s.hasOpenAIKey : s.hasAnthropicKey);
+  if (!sttKey) showSettings(true, "speech");
+  else if (!aiKey) showSettings(true, "ai");
 });

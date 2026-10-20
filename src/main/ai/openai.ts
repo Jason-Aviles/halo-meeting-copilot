@@ -2,6 +2,13 @@ import OpenAI from "openai";
 import type { OpenAIModel } from "../../shared/types";
 import type { Prompt } from "./prompts";
 
+/** Reused so answers keep a warm HTTPS connection. */
+let shared: { apiKey: string; client: OpenAI } | undefined;
+function clientFor(apiKey: string): OpenAI {
+  if (shared?.apiKey !== apiKey) shared = { apiKey, client: new OpenAI({ apiKey }) };
+  return shared.client;
+}
+
 export async function streamOpenAI(opts: {
   apiKey: string;
   model: OpenAIModel;
@@ -9,7 +16,7 @@ export async function streamOpenAI(opts: {
   signal: AbortSignal;
   onText(text: string): void;
 }): Promise<void> {
-  const client = new OpenAI({ apiKey: opts.apiKey });
+  const client = clientFor(opts.apiKey);
 
   // OpenAI caches a repeated prompt prefix automatically, so keep the stable
   // instructions and notes ahead of the changing transcript.
