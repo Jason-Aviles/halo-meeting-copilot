@@ -197,24 +197,39 @@ export function initReferences(api: HaloApi, opts: ReferencesOptions) {
   );
 
   const githubUrl = $<HTMLInputElement>("github-url");
-  $("btn-add-github").addEventListener("click", () => {
-    openForm(forms.github.hidden ? "github" : null);
+  const githubToken = $<HTMLInputElement>("github-token");
+  $("btn-add-github").addEventListener("click", async () => {
+    const opening = forms.github.hidden;
+    openForm(opening ? "github" : null);
+    if (!opening) return;
     githubUrl.focus();
+    const s = await api.getSettings();
+    githubToken.value = "";
+    githubToken.placeholder = s.hasGithubToken ? "Saved. Type to replace" : "Not needed for public repos";
   });
   const addGithub = async () => {
     if (!githubUrl.value.trim()) return githubUrl.focus();
-    if (await run($("btn-github-add"), () => api.addSourceGithub(githubUrl.value))) {
+    const ok = await run($("btn-github-add"), async () => {
+      // Saved encrypted like the other keys, then used for this and later refreshes.
+      if (githubToken.value.trim()) await api.updateSettings({ githubToken: githubToken.value });
+      return api.addSourceGithub(githubUrl.value);
+    });
+    if (ok) {
       githubUrl.value = "";
+      githubToken.value = "";
       openForm(null);
     }
   };
   $("btn-github-add").addEventListener("click", () => void addGithub());
-  githubUrl.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      void addGithub();
-    }
-  });
+  // Enter would otherwise submit the whole Settings form.
+  for (const input of [githubUrl, githubToken]) {
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        void addGithub();
+      }
+    });
+  }
 
   const jira = {
     site: $<HTMLInputElement>("jira-site"),

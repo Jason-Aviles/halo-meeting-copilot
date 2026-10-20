@@ -52,9 +52,11 @@ No API key is needed, and nothing leaves your computer except speech-to-text aud
 On **Settings → Context**, add:
 
 - **Files**: text, Markdown or code files (save PDFs and Word files as .txt or .md first)
-- **Folder**: a folder or local repo. READMEs and docs are read first, then code; `node_modules`, `.git` and build output are skipped
-- **GitHub**: a public repo link, or `github.com/owner/repo/tree/main/docs` for one folder
-- **Jira**: your Jira Cloud site, email and an [API token](https://id.atlassian.com/manage-profile/security/api-tokens). By default it pulls the tickets assigned to you that aren't done; change the JQL for anything else
+- **Folder**: a folder or local repo. The README is read first, then agent and instruction files (`AGENTS.md`, `CLAUDE.md`, `.claude/agents/*.md`, `.github/copilot-instructions.md`, `.cursorrules`), then other docs, then code. `node_modules`, `.git`, `.env` and build output are skipped
+- **GitHub**: a repo link, or `github.com/owner/repo/tree/main/docs` for one folder, read in the same order. Public repos need nothing; for a private repo, add a fine-grained token with read-only Contents access
+- **Jira**: your Jira Cloud site, email and an [API token](https://id.atlassian.com/manage-profile/security/api-tokens). Leave the box blank for your open tickets, or paste ticket links or keys (`PAY-412, PAY-415`, which also brings in their sub-tasks), a saved-filter or search link, or any JQL
+
+Combine them freely: for a sprint review, tick your Jira tickets, the repo, and the frontend agent file; for an interview, just your resume notes. Each answer uses everything ticked, so when someone says "where are we on the payment bug?", Halo can answer from PAY-412's description and latest comments, in terms that match the repo's README.
 
 References are saved on this computer. Use the paperclip chip above the answer to switch them on or off for each call, and the refresh button to pull the latest. Ticked references, about 200K characters at most, go to your AI model with each answer; Claude caches them, so repeat answers stay fast and cheap.
 

@@ -94,6 +94,7 @@ export interface PublicSettings {
   jiraSite: string;
   jiraEmail: string;
   hasJiraToken: boolean;
+  hasGithubToken: boolean;
   hasDeepgramKey: boolean;
   hasSpeechmaticsKey: boolean;
   hasAnthropicKey: boolean;
@@ -119,6 +120,7 @@ export interface SettingsUpdate {
   jiraSite?: string;
   jiraEmail?: string;
   jiraToken?: string;
+  githubToken?: string;
   deepgramKey?: string;
   speechmaticsKey?: string;
   anthropicKey?: string;

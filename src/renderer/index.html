@@ -263,7 +263,12 @@
                 <label>
                   GitHub repository
                   <input id="github-url" type="text" spellcheck="false" placeholder="github.com/owner/repo" />
-                  <small>Public repos only. Add /tree/main/docs to take just one folder.</small>
+                  <small>Add /tree/main/docs to take just one folder.</small>
+                </label>
+                <label>
+                  GitHub token (for private repos)
+                  <input id="github-token" type="password" autocomplete="off" />
+                  <small>Optional. Create a fine-grained token with read-only Contents access at github.com/settings/tokens.</small>
                 </label>
                 <div class="inline-actions">
                   <button type="button" class="link" data-close="form-github">Cancel</button>
@@ -286,9 +291,9 @@
                   <small>Create one at id.atlassian.com → Security → API tokens.</small>
                 </label>
                 <label>
-                  Which tickets (JQL)
+                  Which tickets
                   <input id="jira-jql" type="text" spellcheck="false" />
-                  <small>The default is everything assigned to you that isn't done.</small>
+                  <small>Paste ticket links or keys (PAY-412, PAY-415), a filter or search link, or JQL. The default is everything assigned to you that isn't done.</small>
                 </label>
                 <div class="inline-actions">
                   <button type="button" class="link" data-close="form-jira">Cancel</button>

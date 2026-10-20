@@ -25,6 +25,15 @@ const SKIP_DIRS = new Set([
   "__pycache__", ".venv", "venv", "coverage", ".idea", ".vscode",
 ]);
 const SKIP_FILES = /(^|[\\/])(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|Cargo\.lock|.*\.min\.(js|css))$/i;
+/**
+ * Hidden folders are skipped, except these: they hold AI agent definitions and
+ * project instructions (.claude/agents/frontend.md, .github/copilot-instructions.md).
+ */
+const AGENT_DIRS = new Set([".claude", ".github", ".cursor", ".windsurf", ".agents"]);
+/** Instruction files with no extension that are worth reading. */
+const AGENT_FILES = new Set([".cursorrules", ".windsurfrules", ".clinerules"]);
+/** Files that describe how the project works; read right after the README. */
+const KEY_DOCS = /^(agents|claude|gemini|contributing|architecture|copilot-instructions)\.md$/;
 
 const dir = () => path.join(app.getPath("userData"), "sources");
 const indexFile = () => path.join(dir(), "index.json");
@@ -62,7 +71,14 @@ function rank(file: string): number {
   const base = path.basename(file).toLowerCase();
   const depth = file.split(/[\\/]/).length;
   const ext = path.extname(base);
-  const tier = base.startsWith("readme") ? 0 : [".md", ".mdx", ".markdown", ".txt", ".rst", ".adoc"].includes(ext) ? 1 : 2;
+  const agentFile = /[\\/]agents[\\/]/.test(file.toLowerCase()) && ext === ".md";
+  const tier = base.startsWith("readme")
+    ? 0
+    : KEY_DOCS.test(base) || AGENT_FILES.has(base) || agentFile
+      ? 1
+      : [".md", ".mdx", ".markdown", ".txt", ".rst", ".adoc"].includes(ext)
+        ? 2
+        : 3;
   return tier * 1000 + depth;
 }
 
@@ -90,7 +106,12 @@ function combine(files: Array<{ name: string; text: string }>): { text: string; 
 }
 
 function isTextFile(file: string): boolean {
+  if (AGENT_FILES.has(path.basename(file).toLowerCase())) return true;
   return TEXT_EXTENSIONS.has(path.extname(file).toLowerCase()) && !SKIP_FILES.test(file);
+}
+
+function skipDir(name: string): boolean {
+  return SKIP_DIRS.has(name) || (name.startsWith(".") && !AGENT_DIRS.has(name));
 }
 
 function readFolder(root: string): { text: string; files: number } {
@@ -106,7 +127,7 @@ function readFolder(root: string): { text: string; files: number } {
     for (const e of entries) {
       const full = path.join(d, e.name);
       if (e.isDirectory()) {
-        if (!SKIP_DIRS.has(e.name) && !e.name.startsWith(".")) walk(full);
+        if (!skipDir(e.name)) walk(full);
       } else if (e.isFile() && isTextFile(full)) {
         found.push(path.relative(root, full));
       }
@@ -157,14 +178,32 @@ export function parseGithubUrl(input: string): { owner: string; repo: string; re
   return { owner, repo, ...(kind === "tree" && ref ? { ref } : {}), sub: kind === "tree" ? rest.join("/") : "" };
 }
 
+/** A token is optional: it unlocks private repos and a much higher rate limit. */
+function githubAuth(): Record<string, string> {
+  const token = getSecret("githubToken");
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 async function github(pathname: string): Promise<Response> {
   const res = await fetch(`https://api.github.com${pathname}`, {
-    headers: { Accept: "application/vnd.github+json", "User-Agent": "Halo" },
+    headers: { Accept: "application/vnd.github+json", "User-Agent": "Halo", ...githubAuth() },
     signal: AbortSignal.timeout(20_000),
   });
-  if (res.status === 404) throw new Error("GitHub couldn't find that repository. Only public repos work.");
+  const hasToken = Boolean(getSecret("githubToken"));
+  if (res.status === 401) throw new Error("GitHub rejected your token. Check it hasn't expired.");
+  if (res.status === 404) {
+    throw new Error(
+      hasToken
+        ? "GitHub couldn't find that repository, or your token can't read it."
+        : "GitHub couldn't find that repository. For a private repo, add a GitHub token.",
+    );
+  }
   if (res.status === 403 || res.status === 429) {
-    throw new Error("GitHub's rate limit for unsigned requests was hit. Try again in an hour.");
+    throw new Error(
+      hasToken
+        ? "GitHub refused the request. Your token may lack access, or the rate limit was hit."
+        : "GitHub's rate limit for requests without a token was hit. Add a token or try again in an hour.",
+    );
   }
   if (!res.ok) throw new Error(`GitHub error ${res.status}`);
   return res;
@@ -183,7 +222,7 @@ async function readGithub(location: string): Promise<{ text: string; files: numb
   const picks = tree.tree
     .filter((t) => t.type === "blob" && t.path.startsWith(prefix) && (t.size ?? 0) <= MAX_FILE_BYTES)
     .map((t) => t.path)
-    .filter((p) => isTextFile(p) && !p.split("/").some((part) => SKIP_DIRS.has(part)))
+    .filter((p) => isTextFile(p) && !p.split("/").slice(0, -1).some(skipDir))
     .sort((a, b) => rank(a) - rank(b) || a.localeCompare(b))
     .slice(0, MAX_GITHUB_FILES);
 
@@ -194,7 +233,7 @@ async function readGithub(location: string): Promise<{ text: string; files: numb
       const segments = (s: string) => s.split("/").map(encodeURIComponent).join("/");
       const raw = `https://raw.githubusercontent.com/${owner}/${repo}/${segments(ref)}/${segments(p)}`;
       try {
-        const res = await fetch(raw, { signal: AbortSignal.timeout(20_000) });
+        const res = await fetch(raw, { headers: githubAuth(), signal: AbortSignal.timeout(20_000) });
         return res.ok ? [{ name: p, text: await res.text() }] : [];
       } catch {
         return [];
@@ -239,6 +278,45 @@ interface JiraIssue {
   };
 }
 
+/**
+ * Turns what the user pasted into JQL: issue links or keys ("PAY-412"), a
+ * saved-filter link (?filter=123), a search link (?jql=…), or JQL as-is.
+ * Linked issues bring their sub-tasks and epic children along.
+ */
+export function jiraQuery(input: string): string {
+  const text = input.trim();
+  if (!text) return DEFAULT_JIRA_JQL;
+
+  for (const url of text.match(/https?:\/\/\S+/g) ?? []) {
+    try {
+      const params = new URL(url).searchParams;
+      const jql = params.get("jql");
+      if (jql) return jql;
+      const filter = params.get("filter");
+      if (filter && /^\d+$/.test(filter)) return `filter = ${filter}`;
+    } catch {
+      // Not a URL after all; fall through.
+    }
+  }
+
+  const looksLikeJql = /[=~<>]|\b(and|or|in|is|not|order by)\b/i.test(text.replace(/https?:\/\/\S+/g, ""));
+  const keys = [...new Set(text.match(/\b[A-Z][A-Z0-9_]+-\d+\b/g) ?? [])];
+  if (keys.length && !looksLikeJql) {
+    const list = keys.join(", ");
+    return `key in (${list}) OR parent in (${list}) ORDER BY updated DESC`;
+  }
+  return text;
+}
+
+function jiraTitle(jql: string): string {
+  if (jql.trim() === DEFAULT_JIRA_JQL) return "My open Jira tickets";
+  const keys = /^key in \(([^)]*)\)/.exec(jql);
+  if (keys) return `Jira: ${keys[1]}`;
+  const filter = /^filter = (\d+)$/.exec(jql);
+  if (filter) return `Jira filter ${filter[1]}`;
+  return `Jira: ${jql.trim().slice(0, 60)}`;
+}
+
 /** Fetches the issues a JQL query matches, with their descriptions and latest comments. */
 async function readJira(jql: string): Promise<{ text: string; files: number; title: string }> {
   const { jiraSite: site, jiraEmail: email } = getSettings();
@@ -281,8 +359,7 @@ async function readJira(jql: string): Promise<{ text: string; files: number; tit
     return { name: `${issue.key} (https://${site}/browse/${issue.key})`, text: parts.join("\n") };
   });
 
-  const title = jql.trim() === DEFAULT_JIRA_JQL ? "My open Jira tickets" : `Jira: ${jql.trim().slice(0, 60)}`;
-  return { ...combine(files), title };
+  return { ...combine(files), title: jiraTitle(jql) };
 }
 
 async function capture(kind: SourceInfo["kind"], location: string): Promise<{ text: string; files: number; title: string }> {

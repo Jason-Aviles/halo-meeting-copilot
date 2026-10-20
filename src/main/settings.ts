@@ -22,8 +22,15 @@ import {
 import { normalizeLocalUrl } from "./ai/local";
 import { listSources } from "./sources";
 
-type SecretName = "deepgramKey" | "speechmaticsKey" | "anthropicKey" | "openaiKey" | "jiraToken";
-const SECRET_NAMES: SecretName[] = ["deepgramKey", "speechmaticsKey", "anthropicKey", "openaiKey", "jiraToken"];
+type SecretName = "deepgramKey" | "speechmaticsKey" | "anthropicKey" | "openaiKey" | "jiraToken" | "githubToken";
+const SECRET_NAMES: SecretName[] = [
+  "deepgramKey",
+  "speechmaticsKey",
+  "anthropicKey",
+  "openaiKey",
+  "jiraToken",
+  "githubToken",
+];
 
 interface StoredSettings {
   sttProvider: SttProvider;
@@ -138,6 +145,7 @@ export function toPublic(): PublicSettings {
     jiraSite: s.jiraSite,
     jiraEmail: s.jiraEmail,
     hasJiraToken: Boolean(s.secrets.jiraToken),
+    hasGithubToken: Boolean(s.secrets.githubToken),
     hasDeepgramKey: Boolean(s.secrets.deepgramKey),
     hasSpeechmaticsKey: Boolean(s.secrets.speechmaticsKey),
     hasAnthropicKey: Boolean(s.secrets.anthropicKey),

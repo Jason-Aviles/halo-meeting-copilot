@@ -11,7 +11,6 @@ import {
 } from "electron";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { DEFAULT_JIRA_JQL } from "../shared/types";
 import type {
   AnswerEvent,
   AnswerRequest,
@@ -27,7 +26,7 @@ import { deleteCall, getCall, saveCall, searchCalls, updateNotes } from "./histo
 import { detectMeetingApp, loadNative, type NativeEchoCanceller } from "./native";
 import { listLocalModels } from "./ai/local";
 import { getSecret, getSettings, toPublic, updateSettings } from "./settings";
-import { addSource, enabledSourceText, refreshSource, removeSource, setSourceEnabled } from "./sources";
+import { addSource, enabledSourceText, jiraQuery, refreshSource, removeSource, setSourceEnabled } from "./sources";
 import { openDeepgram } from "./stt/deepgram";
 import { openSpeechmatics } from "./stt/speechmatics";
 import { withReconnect } from "./stt/reconnect";
@@ -282,7 +281,7 @@ function registerIpc(): void {
   handle("sources:addFiles", () => pickAndAdd("file"));
   handle("sources:addFolder", () => pickAndAdd("folder"));
   handle("sources:addGithub", (url: string) => addSource("github", String(url)));
-  handle("sources:addJira", (jql: string) => addSource("jira", String(jql).trim() || DEFAULT_JIRA_JQL));
+  handle("sources:addJira", (input: string) => addSource("jira", jiraQuery(String(input))));
   handle("sources:refresh", (id: string) => refreshSource(String(id)));
   handle("sources:remove", (id: string) => removeSource(String(id)));
   handle("sources:setEnabled", (id: string, on: boolean) => setSourceEnabled(String(id), Boolean(on)));
